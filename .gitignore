@@ -1,0 +1,17 @@
+# Build outputs
+**/out/
+**/output/
+*.class
+
+# Python
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+
+# Editor / OS
+.vscode/
+.idea/
+.claude/
+*.iml
+Thumbs.db
+.DS_Store
