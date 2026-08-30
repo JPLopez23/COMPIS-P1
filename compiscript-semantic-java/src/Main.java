@@ -1,3 +1,4 @@
+import gui.MainWindow;
 import gui.PipelineResult;
 import gui.PipelineRunner;
 import viz.GraphvizUtil;
@@ -8,12 +9,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-/** Punto de entrada de Compiscript en modo CLI (batch): analiza un .cps y
- *  reporta errores léxicos / sintácticos / semánticos, con exportadores
- *  opcionales de árbol (DOT/PNG) y tabla de símbolos (Markdown). */
+/** Punto de entrada de Compiscript: modo CLI (batch) o subcomando 'gui' (IDE Swing). */
 public class Main {
 
     public static void main(String[] args) {
+        if (args.length >= 1 && (args[0].equals("gui") || args[0].equals("--gui") || args[0].equals("-gui"))) {
+            MainWindow.main(new String[0]);
+            return;
+        }
+
         if (args.length < 1) {
             printUsage();
             System.exit(1);
@@ -79,6 +83,7 @@ public class Main {
 
     private static void printUsage() {
         System.err.println("Uso:");
+        System.err.println("  java -cp out Main gui                                    # Lanza el IDE gráfico (Swing)");
         System.err.println("  java -cp out Main <archivo.cps> [-out carpeta] [-dot] [-png] [-symbols]");
         System.err.println();
         System.err.println("  -out       Carpeta de salida (default: output)");
