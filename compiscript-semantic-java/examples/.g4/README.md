@@ -1,18 +1,30 @@
-# Gramáticas `.g4` de referencia
+# Gramaticas `.g4` de referencia
 
-Estos archivos **no** son Compiscript y **no** se usan para compilar nada.
-Son gramáticas ANTLR de ejemplo para demostrar el visor de gramáticas del
-IDE:
+## Solo para ver (visor "Abrir otra...")
 
-> **Ver gramática → Abrir otra gramática…**
+`Calculator.g4` y `JSON.g4` no son Compiscript. Sirven para mostrar el visor
+de gramaticas del IDE en modo lectura; **no** se pueden aplicar al proyecto.
 
-Ese visor abre cualquier `.g4` del disco en modo **solo lectura**, útil
-para mostrar o comparar otra gramática ANTLR durante la exposición. No se
-puede compilar con ellas ni se recompila el analizador.
-
-| Archivo | Qué muestra |
+| Archivo | Que muestra |
 |---|---|
-| `Calculator.g4` | Gramática mínima con precedencia de operadores y alternativas etiquetadas (`# printExpr`). |
-| `JSON.g4` | Gramática recursiva con reglas `fragment` en el lexer; versión canónica de los ejemplos de ANTLR. |
+| `Calculator.g4` | precedencia de operadores y alternativas etiquetadas |
+| `JSON.g4` | gramatica recursiva con reglas `fragment` |
 
-La gramática real del proyecto está en `../../grammar/Compiscript.g4`.
+## Aplicables al proyecto (boton "Usar en el proyecto")
+
+Variantes de la gramatica de Compiscript. Mantienen `grammar Compiscript;` y
+la regla inicial `program`, asi que el IDE las valida, regenera el parser y
+recompila. Son compatibles hacia atras.
+
+| Archivo | Cambio |
+|---|---|
+| `Compiscript_comentarios.g4` | comentarios de linea con `#` ademas de `//` |
+| `Compiscript_alias.g4` | `func` como alias de `function`, `imprimir` de `print` |
+| `Compiscript_numeros.g4` | enteros hexadecimales `0xFF` y con separador `1_000_000` |
+
+Cada archivo trae en su cabecera un ejemplo `.cps` que solo compila con esa
+variante. Un `.g4` que le cambie el nombre a la gramatica o quite la regla
+`program` es rechazado: el analizador semantico y la tabla de simbolos
+arrancan en `program`.
+
+La gramatica real del proyecto esta en `../../grammar/Compiscript.g4`.

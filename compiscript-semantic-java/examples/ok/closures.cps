@@ -1,9 +1,3 @@
-// ============================================================
-// closures.cps — funciones anidadas, closures y recursión.
-// Debe compilar SIN errores.
-// ============================================================
-
-// La función interna captura 'base' del entorno de definición.
 function crearSumador(base: integer): integer {
   let acumulado: integer = base;
 
@@ -17,7 +11,6 @@ function crearSumador(base: integer): integer {
 let resultado: integer = crearSumador(5);
 print(resultado);
 
-// Recursión mutua-simulada: factorial clásico.
 function factorial(n: integer): integer {
   if (n <= 1) {
     return 1;
@@ -27,7 +20,6 @@ function factorial(n: integer): integer {
 
 print(factorial(6));
 
-// Closure de dos niveles: cada nivel abre su propio ámbito.
 function externa(): integer {
   let a: integer = 1;
   function media(): integer {

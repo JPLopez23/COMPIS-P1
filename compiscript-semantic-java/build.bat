@@ -5,7 +5,7 @@ echo === Compiscript: build ===
 if not exist out mkdir out
 
 echo [1/2] Generando parser ANTLR (Java)...
-java -jar lib\antlr-4.13.2-complete.jar -Dlanguage=Java -visitor -no-listener -package generated -o src\generated grammar\Compiscript.g4
+java -jar lib\antlr-4.13.2-complete.jar -Dlanguage=Java -visitor -no-listener -package generated -Xexact-output-dir -o src\generated grammar\Compiscript.g4
 if errorlevel 1 goto :error
 
 echo [2/2] Compilando fuentes Java...

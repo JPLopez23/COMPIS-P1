@@ -1,9 +1,3 @@
-// ============================================================
-// demo_completo.cps — recorre casi todas las características
-// de Compiscript. Debe compilar SIN errores.
-// ============================================================
-
-// --- Tipos, literales, aritmética y lógica ---
 let edad: integer = 21;
 let nombre: string = "Ana";
 let activa: boolean = true;
@@ -13,20 +7,16 @@ let x: integer = 5 + 3 * 2;
 let y: boolean = !(x < 10 || x > 20);
 let z: integer = (1 + 2) * 3;
 
-// --- Variables sin inicializar, luego asignadas ---
 let apodo: string;
 apodo = "Anita";
 
-// --- Constantes ---
 const PI: integer = 314;
 
-// --- Funciones, parámetros, llamadas ---
 function saludar(nombre: string): string {
   return "Hola " + nombre;
 }
 let mensaje: string = saludar("Mundo");
 
-// --- Recursión ---
 function factorial(n: integer): integer {
   if (n <= 1) {
     return 1;
@@ -35,7 +25,6 @@ function factorial(n: integer): integer {
 }
 let f5: integer = factorial(5);
 
-// --- Funciones anidadas (closures) ---
 function crearContador(): integer {
   function siguiente(): integer {
     return 1;
@@ -44,14 +33,12 @@ function crearContador(): integer {
 }
 let contador: integer = crearContador();
 
-// --- Arreglos, índices, matrices ---
 let notas: integer[] = [90, 85, 100];
 print(notas[0]);
 
 let matriz: integer[][] = [[1, 2], [3, 4]];
 print(matriz[1][0]);
 
-// --- Clases, constructor, herencia, this ---
 class Animal {
   let nombre: string;
 
@@ -73,7 +60,6 @@ class Perro : Animal {
 let perro: Perro = new Perro("Toby");
 print(perro.hablar());
 
-// --- Control de flujo ---
 if (edad > 18) {
   print("Mayor de edad");
 } else {
@@ -117,7 +103,6 @@ try {
   print("Error atrapado: " + err);
 }
 
-// --- Bloque con su propio ámbito ---
 {
   let interno: integer = 42;
   print(interno);

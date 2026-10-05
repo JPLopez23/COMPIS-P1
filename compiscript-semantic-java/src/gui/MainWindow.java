@@ -139,9 +139,9 @@ public class MainWindow extends JFrame {
         return p;
     }
 
-    /** Abre la gramática incluida en una ventana de solo lectura. */
+    /** Abre la gramática en un editor con opción de guardarla y aplicarla al proyecto. */
     private void viewGrammar() {
-        JDialog dialog = new JDialog(this, "Gramática  —  solo lectura", false);
+        JDialog dialog = new JDialog(this, "Gramática", false);
         dialog.setSize(760, 760);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout());
@@ -152,52 +152,143 @@ public class MainWindow extends JFrame {
 
         JTextArea area = new JTextArea();
         area.setFont(Theme.mono(Font.PLAIN, 13));
-        area.setEditable(false);
+        area.setEditable(true);
         area.setBackground(new Color(252, 252, 255));
         area.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
 
-        // Permite abrir cualquier otro .g4 del disco en el mismo visor.
-        JButton openOtherBtn = new JButton("Abrir otra gramática…");
-        openOtherBtn.setFont(Theme.ui(Font.PLAIN, 12));
-        openOtherBtn.setFocusPainted(false);
-        openOtherBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        // Archivo cargado en el editor; por defecto la gramática del proyecto.
+        File[] current = { new File(GRAMMAR_PATH) };
+
+        JButton openOtherBtn = new JButton("Abrir otra…");
+        JButton saveBtn      = new JButton("Guardar");
+        JButton useBtn       = new JButton("Usar en el proyecto");
+        for (JButton b : new JButton[]{ openOtherBtn, saveBtn, useBtn }) {
+            b.setFont(Theme.ui(Font.PLAIN, 12));
+            b.setFocusPainted(false);
+            b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        }
+
         openOtherBtn.addActionListener(e -> {
-            JFileChooser fc = new JFileChooser(new File(GRAMMAR_PATH).getAbsoluteFile().getParentFile());
+            File start = new File("examples/.g4").getAbsoluteFile();
+            if (!start.isDirectory()) start = new File(GRAMMAR_PATH).getAbsoluteFile().getParentFile();
+            JFileChooser fc = new JFileChooser(start);
             fc.setDialogTitle("Elegir gramática ANTLR (.g4)");
             fc.setFileFilter(new javax.swing.filechooser.FileFilter() {
                 @Override public boolean accept(File f) { return f.isDirectory() || f.getName().toLowerCase().endsWith(".g4"); }
                 @Override public String getDescription() { return "Gramática ANTLR (*.g4)"; }
             });
             if (fc.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                loadGrammarInto(fc.getSelectedFile(), area, title);
+                current[0] = fc.getSelectedFile();
+                loadGrammarInto(current[0], area, title);
             }
         });
 
-        JPanel head = new JPanel(new BorderLayout());
+        saveBtn.addActionListener(e -> {
+            try {
+                Files.write(current[0].toPath(), area.getText().getBytes(StandardCharsets.UTF_8));
+                title.setText(current[0].getName() + "   ·   guardado");
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(dialog, "No se pudo guardar: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        useBtn.addActionListener(e -> applyGrammarToProject(dialog, area,
+            new JButton[]{ openOtherBtn, saveBtn, useBtn }));
+
+        JPanel head = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
         head.setBackground(Theme.LOADED.tint);
         head.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(0, 0, 1, 0, C_GRID),
-            BorderFactory.createEmptyBorder(10, 14, 10, 14)));
-        head.add(title, BorderLayout.WEST);
-        head.add(openOtherBtn, BorderLayout.EAST);
+            BorderFactory.createEmptyBorder(6, 14, 6, 14)));
+        head.add(openOtherBtn);
+        head.add(saveBtn);
+        head.add(useBtn);
 
-        dialog.add(head, BorderLayout.NORTH);
+        JPanel top = new JPanel(new BorderLayout());
+        title.setBorder(BorderFactory.createEmptyBorder(8, 16, 4, 16));
+        top.add(title, BorderLayout.NORTH);
+        top.add(head, BorderLayout.SOUTH);
+
+        dialog.add(top, BorderLayout.NORTH);
         dialog.add(new JScrollPane(area), BorderLayout.CENTER);
 
-        loadGrammarInto(new File(GRAMMAR_PATH), area, title);
+        loadGrammarInto(current[0], area, title);
         dialog.setVisible(true);
     }
 
-    /** Carga un .g4 en el visor; si falla, muestra el aviso en el propio texto. */
+    /** Escribe la gramática del editor al proyecto, regenera el parser, recompila y reinicia. */
+    private void applyGrammarToProject(JDialog dialog, JTextArea area, JButton[] buttons) {
+        int ans = JOptionPane.showConfirmDialog(dialog,
+            "Esto reemplazará grammar/Compiscript.g4, regenerará el parser ANTLR\n" +
+            "y recompilará el proyecto. El IDE se reiniciará al terminar.\n\n¿Continuar?",
+            "Usar en el proyecto", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (ans != JOptionPane.OK_OPTION) return;
+
+        for (JButton b : buttons) b.setEnabled(false);
+        dialog.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        consoleArea.setText("Aplicando gramática nueva y recompilando…\n");
+
+        String content = area.getText();
+        new SwingWorker<GrammarBuilder.Result, Void>() {
+            @Override protected GrammarBuilder.Result doInBackground() {
+                return GrammarBuilder.applyGrammar(content);
+            }
+            @Override protected void done() {
+                GrammarBuilder.Result r;
+                try {
+                    r = get();
+                } catch (InterruptedException | ExecutionException ex) {
+                    dialog.setCursor(Cursor.getDefaultCursor());
+                    for (JButton b : buttons) b.setEnabled(true);
+                    JOptionPane.showMessageDialog(dialog, "Error inesperado: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                consoleArea.setText(r.log);
+                consoleArea.setCaretPosition(0);
+                if (r.ok) {
+                    JOptionPane.showMessageDialog(dialog,
+                        "Gramática aplicada y proyecto recompilado.\nEl IDE se reiniciará ahora.",
+                        "Listo", JOptionPane.INFORMATION_MESSAGE);
+                    GrammarBuilder.restartGui();
+                } else {
+                    dialog.setCursor(Cursor.getDefaultCursor());
+                    for (JButton b : buttons) b.setEnabled(true);
+                    if (r.log.split("\n", -1).length <= 14) {
+                        JOptionPane.showMessageDialog(dialog, r.log.trim(),
+                            "No se pudo aplicar la gramática", JOptionPane.WARNING_MESSAGE);
+                    } else {
+                        showTextDialog(dialog, "No se pudo aplicar la gramática", r.log);
+                    }
+                }
+            }
+        }.execute();
+    }
+
+    /** Diálogo modal con texto monoespaciado desplazable, para el registro de compilación. */
+    private void showTextDialog(Window owner, String heading, String text) {
+        JDialog d = new JDialog(owner, heading, Dialog.ModalityType.APPLICATION_MODAL);
+        d.setSize(680, 480);
+        d.setLocationRelativeTo(owner);
+        JTextArea ta = new JTextArea(text);
+        ta.setFont(Theme.mono(Font.PLAIN, 12));
+        ta.setEditable(false);
+        ta.setCaretPosition(0);
+        d.add(new JScrollPane(ta), BorderLayout.CENTER);
+        d.setVisible(true);
+    }
+
+    /** Carga un .g4 en el editor; si falla, muestra el aviso en el propio texto. */
     private void loadGrammarInto(File f, JTextArea area, JLabel title) {
         try {
             String content = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
             area.setText(content);
             area.setCaretPosition(0);
-            title.setText(f.getName() + "   ·   solo lectura");
+            title.setText(f.getName() + "   ·   editable  ·   \"Usar en el proyecto\" regenera y recompila");
         } catch (IOException ex) {
             area.setText("// No se pudo leer " + f.getPath() + "\n// " + ex.getMessage());
-            title.setText("(no encontrada)   ·   solo lectura");
+            title.setText("(no encontrada)");
         }
     }
 

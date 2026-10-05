@@ -141,7 +141,9 @@ public class DropZone extends JPanel {
 
     // ── Selector de archivo ──────────────────────────────────────────────────
     private void browse() {
-        JFileChooser chooser = new JFileChooser();
+        File start = new File("C:/Users/jplop/Downloads/compispq/compisP1-Pruebas/compiscript-semantic-java");
+        if (!start.isDirectory()) start = new File("examples").getAbsoluteFile();
+        JFileChooser chooser = new JFileChooser(start.isDirectory() ? start : null);
         chooser.setDialogTitle("Seleccionar " + zoneLabel);
         chooser.setFileFilter(new javax.swing.filechooser.FileFilter() {
             @Override public boolean accept(File f) {
