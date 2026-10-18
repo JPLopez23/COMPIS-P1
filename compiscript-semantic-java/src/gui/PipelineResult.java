@@ -20,6 +20,10 @@ public class PipelineResult {
     public List<Scope> allScopes;
     public String symbolsMarkdown = "";
 
+    /** Código intermedio (TAC) y reporte de registros de activación; vacíos si hubo errores. */
+    public String tac = "";
+    public String activationMarkdown = "";
+
     /** Error fatal del pipeline, null si no hubo. */
     public String error;
 

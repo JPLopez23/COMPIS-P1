@@ -6,6 +6,8 @@ import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
+import codegen.ActivationReport;
+import codegen.TacGenerator;
 import semantic.SemanticAnalyzer;
 import viz.ParseTreeToDot;
 import viz.SymbolTableWriter;
@@ -47,6 +49,14 @@ public class PipelineRunner {
                 res.warnings.addAll(analyzer.warnings);
                 res.allScopes = analyzer.stack.allScopes;
                 res.symbolsMarkdown = new SymbolTableWriter().toMarkdown(res.allScopes);
+
+                if (analyzer.errors.isEmpty()) {
+                    TacGenerator gen = new TacGenerator(analyzer);
+                    res.tac = gen.generate((CompiscriptParser.ProgramContext) tree);
+                    res.activationMarkdown = ActivationReport.toMarkdown(gen);
+                    // la tabla de símbolos ya tiene direcciones, offsets y etiquetas
+                    res.symbolsMarkdown = new SymbolTableWriter().toMarkdown(res.allScopes);
+                }
             }
         } catch (Exception e) {
             res.error = e.getClass().getSimpleName() + ": " + e.getMessage();
