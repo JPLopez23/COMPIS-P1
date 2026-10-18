@@ -20,11 +20,16 @@ public class SymbolTableWriter {
                 continue;
             }
             sb.append("\n");
-            sb.append("| nombre | clase | tipo | línea | col |\n");
-            sb.append("|---|---|---|---|---|\n");
+            sb.append("| nombre | clase | tipo | línea | col | almacenamiento | offset | tamaño | etiqueta | nivel |\n");
+            sb.append("|---|---|---|---|---|---|---|---|---|---|\n");
             for (Symbol s : sc.symbols.values()) {
                 sb.append("| `").append(s.name).append("` | ").append(s.kind).append(" | `")
-                  .append(s.type).append("` | ").append(s.line).append(" | ").append(s.column).append(" |\n");
+                  .append(s.type).append("` | ").append(s.line).append(" | ").append(s.column).append(" | ")
+                  .append(s.storage.isEmpty() ? "—" : s.storage).append(" | ")
+                  .append(s.offset < 0 ? "—" : String.valueOf(s.offset)).append(" | ")
+                  .append(s.size == 0 ? "—" : String.valueOf(s.size)).append(" | ")
+                  .append(s.label.isEmpty() ? "—" : "`" + s.label + "`").append(" | ")
+                  .append(s.storage.isEmpty() ? "—" : String.valueOf(s.nestLevel)).append(" |\n");
             }
             sb.append("\n");
         }
