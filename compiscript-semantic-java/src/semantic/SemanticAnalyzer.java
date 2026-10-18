@@ -20,6 +20,11 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
     public final List<SemanticError> errors = new ArrayList<>();
     public final List<SemanticError> warnings = new ArrayList<>();
 
+    /** Scope creado para cada nodo del árbol (bloque, función, clase, for, foreach, case...). Lo usa el generador de TAC. */
+    public final Map<ParserRuleContext, Scope> scopeOf = new java.util.IdentityHashMap<>();
+    /** Tipo estático de átomos y sufijos de leftHandSide. Lo usa el generador de TAC. */
+    public final Map<ParseTree, Type> nodeTypes = new java.util.IdentityHashMap<>();
+
     private int loopDepth = 0;
     private int switchDepth = 0;
     private final Deque<FunctionSymbol> functionStack = new ArrayDeque<>();
@@ -143,7 +148,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
     }
 
     private boolean analyzeBlock(BlockContext ctx, boolean pushScope, String label) {
-        if (pushScope) stack.push("block", label);
+        if (pushScope) scopeOf.put(ctx, stack.push("block", label));
         boolean terminates = false;
         boolean deadReported = false;
         for (StatementContext st : ctx.statement()) {
@@ -267,7 +272,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
     }
 
     private boolean stmtForStatement(ForStatementContext ctx) {
-        stack.push("block", "for");
+        scopeOf.put(ctx, stack.push("block", "for"));
         if (ctx.variableDeclaration() != null) stmtVariableDeclaration(ctx.variableDeclaration());
         else if (ctx.assignment() != null) stmtAssignment(ctx.assignment());
         List<ExpressionContext> exprs = ctx.expression();
@@ -294,7 +299,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
             err("LIST", "'foreach' requiere un iterable (array), se obtuvo " + itT, ctx);
             elem = ErrorType.INSTANCE;
         }
-        stack.push("block", "foreach");
+        scopeOf.put(ctx, stack.push("block", "foreach"));
         int[] p = pos(ctx);
         VariableSymbol sym = new VariableSymbol(name, elem, p[0], p[1]);
         sym.initialized = true;
@@ -309,7 +314,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
     private boolean stmtTryCatchStatement(TryCatchStatementContext ctx) {
         List<BlockContext> blocks = ctx.block();
         analyzeBlock(blocks.get(0), true, "try");
-        stack.push("block", "catch");
+        scopeOf.put(ctx, stack.push("block", "catch"));
         String name = ctx.Identifier().getText();
         int[] p = pos(ctx);
         VariableSymbol sym = new VariableSymbol(name, PrimitiveType.STRING, p[0], p[1]);
@@ -327,13 +332,13 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
             Type caseT = typeOfExpression(c.expression());
             if (!TypeUtils.typesComparable(swT, caseT))
                 err("TYPE", "tipo de 'case' (" + caseT + ") incompatible con switch (" + swT + ")", c);
-            stack.push("block", "case");
+            scopeOf.put(c, stack.push("block", "case"));
             for (StatementContext st : c.statement()) analyzeStmt(st);
             stack.pop();
         }
         DefaultCaseContext def = ctx.defaultCase();
         if (def != null) {
-            stack.push("block", "default");
+            scopeOf.put(def, stack.push("block", "default"));
             for (StatementContext st : def.statement()) analyzeStmt(st);
             stack.pop();
         }
@@ -398,7 +403,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
             if (!classStack.isEmpty()) sym.ownerClass = classStack.peek().classType;
             if (!stack.declare(sym)) err("FUNCTION", "redeclaración de función '" + name + "'", ctx);
         }
-        stack.push("function", sym, null, name);
+        scopeOf.put(ctx, stack.push("function", sym, null, name));
         if (!classStack.isEmpty()) {
             ClassSymbol cls = classStack.peek();
             int[] p = pos(ctx);
@@ -439,7 +444,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
             }
             classes.put(name, sym);
         }
-        stack.push("class", null, sym, name);
+        scopeOf.put(ctx, stack.push("class", null, sym, name));
         classStack.push(sym);
         for (ClassMemberContext m : ctx.classMember()) {
             if (m.variableDeclaration() != null) analyzeMemberVar(m.variableDeclaration(), sym);
@@ -712,7 +717,11 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
 
     private Type typeOfLeftHandSide(LeftHandSideContext ctx) {
         Type atomT = typeOfPrimaryAtom(ctx.primaryAtom());
-        for (SuffixOpContext suf : ctx.suffixOp()) atomT = applySuffix(atomT, suf);
+        nodeTypes.put(ctx.primaryAtom(), atomT);
+        for (SuffixOpContext suf : ctx.suffixOp()) {
+            atomT = applySuffix(atomT, suf);
+            nodeTypes.put(suf, atomT);
+        }
         return atomT;
     }
 
