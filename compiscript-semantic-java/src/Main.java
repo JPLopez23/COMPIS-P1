@@ -28,6 +28,8 @@ public class Main {
         boolean writeDot = false;
         boolean writePng = false;
         boolean writeSymbols = false;
+        boolean writeTac = false;
+        boolean showTac = false;
 
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
@@ -35,6 +37,8 @@ public class Main {
                 case "-dot": writeDot = true; break;
                 case "-png": writePng = true; break;
                 case "-symbols": writeSymbols = true; break;
+                case "-tac": writeTac = true; break;
+                case "-print-tac": showTac = true; break;
                 default:
                     System.err.println("Argumento desconocido: " + args[i]);
                     printUsage();
@@ -50,7 +54,7 @@ public class Main {
 
             String base = baseName(inputFile);
             Path outPath = Paths.get(outDir);
-            if (writeDot || writePng || writeSymbols) Files.createDirectories(outPath);
+            if (writeDot || writePng || writeSymbols || writeTac) Files.createDirectories(outPath);
 
             if (writeDot) {
                 Path p = outPath.resolve(base + ".dot");
@@ -66,6 +70,20 @@ public class Main {
                 Path p = outPath.resolve(base + ".symbols.md");
                 Files.write(p, res.symbolsMarkdown.getBytes(StandardCharsets.UTF_8));
                 System.out.println("symbols: " + p);
+            }
+
+            if (showTac && !res.tac.isEmpty()) System.out.print(res.tac);
+            if (writeTac) {
+                if (res.tac.isEmpty()) {
+                    System.out.println("tac: no generado (hay errores)");
+                } else {
+                    Path p = outPath.resolve(base + ".tac");
+                    Files.write(p, res.tac.getBytes(StandardCharsets.UTF_8));
+                    System.out.println("tac: " + p);
+                    Path ar = outPath.resolve(base + ".frames.md");
+                    Files.write(ar, res.activationMarkdown.getBytes(StandardCharsets.UTF_8));
+                    System.out.println("registros de activación: " + ar);
+                }
             }
 
             System.exit(res.isOk() ? 0 : 1);
@@ -84,11 +102,13 @@ public class Main {
     private static void printUsage() {
         System.err.println("Uso:");
         System.err.println("  java -cp out Main gui                                    # Lanza el IDE gráfico (Swing)");
-        System.err.println("  java -cp out Main <archivo.cps> [-out carpeta] [-dot] [-png] [-symbols]");
+        System.err.println("  java -cp out Main <archivo.cps> [-out carpeta] [-dot] [-png] [-symbols] [-tac] [-print-tac]");
         System.err.println();
         System.err.println("  -out       Carpeta de salida (default: output)");
         System.err.println("  -dot       Escribe el árbol sintáctico en formato DOT");
         System.err.println("  -png       Renderiza el árbol a PNG (requiere Graphviz)");
-        System.err.println("  -symbols   Escribe la tabla de símbolos en Markdown");
+        System.err.println("  -symbols   Escribe la tabla de símbolos (extendida) en Markdown");
+        System.err.println("  -tac       Escribe el código intermedio (.tac) y los registros de activación (.frames.md)");
+        System.err.println("  -print-tac Imprime el código intermedio por consola");
     }
 }
