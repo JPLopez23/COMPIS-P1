@@ -11,6 +11,12 @@ public class FunctionSymbol extends Symbol {
     public ClassType ownerClass;
     public final List<String> captured = new ArrayList<>();
 
+    // --- Registro de activación (lo rellena codegen.TacGenerator) ---
+    public int paramsSize = 0;
+    public int localsSize = 0;
+    public int tempCount = 0;
+    public int frameSize = 0;
+
     public FunctionSymbol(String name, Type type, int line, int column) {
         super(name, type, line, column);
         this.kind = "function";
