@@ -39,6 +39,8 @@ public class MainWindow extends JFrame {
     private static final int TAB_ERRORS  = 1;
     private static final int TAB_TREE    = 2;
     private static final int TAB_SYMBOLS = 3;
+    private static final int TAB_TAC     = 4;
+    private static final int TAB_FRAMES  = 5;
 
     private final JTextArea editorArea = new JTextArea();
     private final JTextArea consoleArea = new JTextArea();
@@ -51,7 +53,7 @@ public class MainWindow extends JFrame {
     private boolean suppressDocEvents = true;
 
     public MainWindow() {
-        super("Compiscript IDE  —  Analizador Semántico");
+        super("Compiscript IDE  —  Generación de Código Intermedio");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1300, 820);
         setLocationRelativeTo(null);
@@ -325,6 +327,8 @@ public class MainWindow extends JFrame {
         tabs.addTab("Errores",   makePlaceholder("Compila para ver errores y advertencias."));
         tabs.addTab("Árbol",     makePlaceholder("Compila para ver el árbol sintáctico."));
         tabs.addTab("Símbolos",  makePlaceholder("Compila para ver la tabla de símbolos."));
+        tabs.addTab("Código TAC", makePlaceholder("Compila para ver el código intermedio (TAC)."));
+        tabs.addTab("Registros de activación", makePlaceholder("Compila para ver los registros de activación."));
     }
 
     // ── Consola ─────────────────────────────────────────────────────────────
@@ -518,6 +522,8 @@ public class MainWindow extends JFrame {
         tabs.setComponentAt(TAB_ERRORS,  buildErrorsTab(res));
         tabs.setComponentAt(TAB_TREE,    buildTreeTab(res));
         tabs.setComponentAt(TAB_SYMBOLS, buildSymbolsTab(res));
+        tabs.setComponentAt(TAB_TAC,     buildTextTab(res.tac, "Sin código intermedio: corrige los errores para generarlo."));
+        tabs.setComponentAt(TAB_FRAMES,  buildTextTab(res.activationMarkdown, "Sin registros de activación: corrige los errores para generarlos."));
 
         boolean hasErrors = !res.lexicalErrors.isEmpty() || !res.syntaxErrors.isEmpty() || !res.semanticErrors.isEmpty();
         tabs.setForegroundAt(TAB_ERRORS, hasErrors ? Theme.forPhase(res.phase()).accent : Theme.OK.accent);
@@ -683,7 +689,7 @@ public class MainWindow extends JFrame {
                 continue;
             }
 
-            String[] cols = {"nombre", "clase", "tipo", "línea", "col"};
+            String[] cols = {"nombre", "clase", "tipo", "línea", "col", "almacenamiento", "offset", "tamaño", "etiqueta", "nivel"};
             Object[][] data = new Object[sc.symbols.size()][cols.length];
             int i = 0;
             for (Symbol s : sc.symbols.values()) {
@@ -692,6 +698,11 @@ public class MainWindow extends JFrame {
                 data[i][2] = s.type.toString();
                 data[i][3] = s.line;
                 data[i][4] = s.column;
+                data[i][5] = s.storage.isEmpty() ? "—" : s.storage;
+                data[i][6] = s.offset < 0 ? "—" : String.valueOf(s.offset);
+                data[i][7] = s.size == 0 ? "—" : String.valueOf(s.size);
+                data[i][8] = s.label.isEmpty() ? "—" : s.label;
+                data[i][9] = s.storage.isEmpty() ? "—" : String.valueOf(s.nestLevel);
                 i++;
             }
             JTable table = makeTable(data, cols);
@@ -704,6 +715,12 @@ public class MainWindow extends JFrame {
         JScrollPane outer = new JScrollPane(container);
         outer.getVerticalScrollBar().setUnitIncrement(16);
         return outer;
+    }
+
+    // ── Tabs de texto (TAC, registros de activación) ───────────────────────
+    private JComponent buildTextTab(String text, String emptyMsg) {
+        if (text == null || text.isEmpty()) return makePlaceholder(emptyMsg);
+        return makeScrollText(text);
     }
 
     // ── Componentes de UI reutilizables ─────────────────────────────────────
