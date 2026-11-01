@@ -31,6 +31,22 @@ activación. El lenguaje intermedio está documentado en
 | `viz` | árbol en DOT/PNG y tabla de símbolos en Markdown |
 | `tests` | `TestRunner` (semántica + TAC) |
 
+## Intérprete SQL
+
+El mismo repositorio incluye el **intérprete SQL con almacenamiento en archivos** (sin
+ningún DBMS): lexer y parser ANTLR (`grammar/Sql.g4`), AST, análisis semántico, ejecución sobre
+`metadata.txt`, un `.csv` por tabla e índices en `indexes/*.idx`, IDE Swing y 134 pruebas
+automáticas. Se compila con el mismo `build.bat` / `build.sh`:
+
+```bash
+java -cp "out;lib/antlr-4.13.2-complete.jar" Main sql-gui                       # IDE gráfico
+java -cp "out;lib/antlr-4.13.2-complete.jar" Main sql examples/sql/01_esquema.sql -db demo
+java -cp "out;lib/antlr-4.13.2-complete.jar" tests.SqlTestRunner                # pruebas
+```
+
+Documentación completa (formato de archivos, lenguaje, errores semánticos, índices y entregas):
+[docs/SQL.md](docs/SQL.md).
+
 ## Requisitos
 
 - **Java 17** o superior.
