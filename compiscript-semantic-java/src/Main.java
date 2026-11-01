@@ -18,6 +18,17 @@ public class Main {
             return;
         }
 
+        if (args.length >= 1 && args[0].equals("sql")) {
+            System.exit(sql.SqlCli.run(java.util.Arrays.copyOfRange(args, 1, args.length)));
+        }
+        if (args.length >= 1 && args[0].equals("sql-gui")) {
+            gui.SqlWindow.main(java.util.Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (args.length >= 1 && args[0].toLowerCase().endsWith(".sql")) {
+            System.exit(sql.SqlCli.run(args));
+        }
+
         if (args.length < 1) {
             printUsage();
             System.exit(1);
@@ -102,6 +113,8 @@ public class Main {
     private static void printUsage() {
         System.err.println("Uso:");
         System.err.println("  java -cp out Main gui                                    # Lanza el IDE gráfico (Swing)");
+        System.err.println("  java -cp out Main sql <archivo.sql> | -e \"SQL\"          # Intérprete SQL (ver: Main sql)");
+        System.err.println("  java -cp out Main sql-gui                                # IDE gráfico del intérprete SQL");
         System.err.println("  java -cp out Main <archivo.cps> [-out carpeta] [-dot] [-png] [-symbols] [-tac] [-print-tac]");
         System.err.println();
         System.err.println("  -out       Carpeta de salida (default: output)");
