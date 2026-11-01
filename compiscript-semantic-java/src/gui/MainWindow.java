@@ -32,6 +32,7 @@ public class MainWindow extends JFrame {
     private final JButton newBtn     = new JButton("Nuevo");
     private final JButton saveBtn    = new JButton("Guardar como…");
     private final JButton grammarBtn = new JButton("Ver gramática");
+    private final JButton sqlBtn     = new JButton("Ir a SQL");
     private final Pill statePill   = new Pill(Theme.IDLE.label, Theme.IDLE.accent, Theme.IDLE.soft);
 
     private final JTabbedPane tabs = new JTabbedPane(JTabbedPane.TOP);
@@ -127,9 +128,11 @@ public class MainWindow extends JFrame {
         styleSecondaryButton(newBtn);
         styleSecondaryButton(saveBtn);
         styleSecondaryButton(grammarBtn);
+        styleSecondaryButton(sqlBtn);
         newBtn.addActionListener(e -> newFile());
         saveBtn.addActionListener(e -> saveAs());
         grammarBtn.addActionListener(e -> viewGrammar());
+        sqlBtn.addActionListener(e -> { dispose(); SqlWindow.main(new String[0]); });
 
         p.add(Box.createVerticalGlue());
         p.add(newBtn);
@@ -137,6 +140,8 @@ public class MainWindow extends JFrame {
         p.add(saveBtn);
         p.add(Box.createVerticalStrut(6));
         p.add(grammarBtn);
+        p.add(Box.createVerticalStrut(6));
+        p.add(sqlBtn);
         p.add(Box.createVerticalGlue());
         return p;
     }
