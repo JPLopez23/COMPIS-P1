@@ -74,6 +74,9 @@ public class Database {
                     current.columns.add(new TableSchema.Column(p[1], SqlType.valueOf(t), size, pk, nn));
                     break;
                 }
+                case "FOREIGN_KEY":
+                    current.foreignKeys.add(new TableSchema.ForeignKey(p[1], p[2], p[3]));
+                    break;
                 case "INDEX":
                     pendingIndexes.add(p);
                     break;
@@ -94,6 +97,8 @@ public class Database {
                 else if (c.notNull) sb.append(" NOT_NULL");
                 sb.append('\n');
             }
+            for (TableSchema.ForeignKey fk : t.foreignKeys)
+                sb.append("FOREIGN_KEY ").append(fk.column).append(' ').append(fk.refTable).append(' ').append(fk.refColumn).append('\n');
         }
         for (Catalog.IndexDef i : catalog.indexes())
             sb.append("INDEX ").append(i.name).append(' ').append(i.table).append(' ').append(i.column).append('\n');
@@ -109,7 +114,9 @@ public class Database {
         saveMetadata();
     }
 
-    public void dropTable(String name) throws IOException {
+    /** Con cascade se quitan antes las claves foráneas que otras tablas tienen hacia esta. */
+    public void dropTable(String name, boolean cascade) throws IOException {
+        if (cascade) catalog.dropReferencesTo(name);
         for (Catalog.IndexDef d : catalog.removeTable(name)) {
             indexCache.remove(d.name.toLowerCase());
             Files.deleteIfExists(indexPath(d.name));

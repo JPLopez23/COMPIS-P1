@@ -20,7 +20,14 @@ public class TableSchema {
     }
 
     public final String name;
+    /** Clave foránea: la columna de esta tabla referencia refTable(refColumn). */
+    public static class ForeignKey {
+        public final String column, refTable, refColumn;
+        public ForeignKey(String column, String refTable, String refColumn) { this.column = column; this.refTable = refTable; this.refColumn = refColumn; }
+    }
+
     public final List<Column> columns = new ArrayList<>();
+    public final List<ForeignKey> foreignKeys = new ArrayList<>();
 
     public TableSchema(String name) { this.name = name; }
 
@@ -33,6 +40,7 @@ public class TableSchema {
     public TableSchema copy() {
         TableSchema t = new TableSchema(name);
         t.columns.addAll(columns);
+        t.foreignKeys.addAll(foreignKeys);
         return t;
     }
 }

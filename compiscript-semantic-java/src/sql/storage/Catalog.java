@@ -34,6 +34,31 @@ public class Catalog {
 
     public void removeIndex(String name) { indexes.remove(name.toLowerCase()); }
 
+    /** Claves foráneas de otras tablas que apuntan a la tabla dada (las autorreferencias no cuentan). */
+    public List<Map.Entry<TableSchema, TableSchema.ForeignKey>> referencesTo(String table) {
+        List<Map.Entry<TableSchema, TableSchema.ForeignKey>> r = new ArrayList<>();
+        for (TableSchema t : tables.values())
+            for (TableSchema.ForeignKey fk : t.foreignKeys)
+                if (fk.refTable.equalsIgnoreCase(table) && !t.name.equalsIgnoreCase(table))
+                    r.add(new java.util.AbstractMap.SimpleEntry<>(t, fk));
+        return r;
+    }
+
+    /** Todas las claves foráneas, autorreferencias incluidas, que apuntan a la tabla. */
+    public List<Map.Entry<TableSchema, TableSchema.ForeignKey>> allReferencesTo(String table) {
+        List<Map.Entry<TableSchema, TableSchema.ForeignKey>> r = new ArrayList<>();
+        for (TableSchema t : tables.values())
+            for (TableSchema.ForeignKey fk : t.foreignKeys)
+                if (fk.refTable.equalsIgnoreCase(table)) r.add(new java.util.AbstractMap.SimpleEntry<>(t, fk));
+        return r;
+    }
+
+    /** DROP TABLE ... CASCADE: quita las claves foráneas de otras tablas que apuntan a la tabla dada. */
+    public void dropReferencesTo(String table) {
+        for (TableSchema t : tables.values())
+            if (!t.name.equalsIgnoreCase(table)) t.foreignKeys.removeIf(fk -> fk.refTable.equalsIgnoreCase(table));
+    }
+
     public List<IndexDef> indexesOf(String table) {
         List<IndexDef> r = new ArrayList<>();
         for (IndexDef d : indexes.values()) if (d.table.equalsIgnoreCase(table)) r.add(d);

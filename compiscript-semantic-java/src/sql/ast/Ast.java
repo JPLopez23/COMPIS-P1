@@ -45,17 +45,26 @@ public final class Ast {
         }
     }
 
+    /** FOREIGN KEY (column) REFERENCES refTable(refColumn), escrita en la columna o al final de la tabla. */
+    public static class ForeignKey extends Node {
+        public final String column, refTable, refColumn;
+        public ForeignKey(String column, String refTable, String refColumn) { this.column = column; this.refTable = refTable; this.refColumn = refColumn; }
+        public String label() { return "ForeignKey " + column + " -> " + refTable + "(" + refColumn + ")"; }
+    }
+
     public static class CreateTable extends Stmt {
-        public final String name; public final List<ColumnDef> columns;
-        public CreateTable(String name, List<ColumnDef> columns) { this.name = name; this.columns = columns; }
+        public final String name; public final List<ColumnDef> columns; public final List<ForeignKey> foreignKeys;
+        public CreateTable(String name, List<ColumnDef> columns, List<ForeignKey> foreignKeys) {
+            this.name = name; this.columns = columns; this.foreignKeys = foreignKeys;
+        }
         public String label() { return "CreateTable " + name; }
-        public List<Node> children() { return new ArrayList<>(columns); }
+        public List<Node> children() { List<Node> c = new ArrayList<>(columns); c.addAll(foreignKeys); return c; }
     }
 
     public static class DropTable extends Stmt {
-        public final String name;
-        public DropTable(String name) { this.name = name; }
-        public String label() { return "DropTable " + name; }
+        public final String name; public final boolean cascade;
+        public DropTable(String name, boolean cascade) { this.name = name; this.cascade = cascade; }
+        public String label() { return "DropTable " + name + (cascade ? " CASCADE" : ""); }
     }
 
     public static class CreateIndex extends Stmt {

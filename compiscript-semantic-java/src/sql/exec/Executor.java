@@ -64,10 +64,8 @@ public class Executor {
         notes.clear();
         ExecResult r = new ExecResult(s.label());
         if (s instanceof Ast.CreateTable) createTable((Ast.CreateTable) s, r);
-        else if (s instanceof Ast.DropTable) {
-            db.dropTable(((Ast.DropTable) s).name);
-            r.message = "Tabla '" + ((Ast.DropTable) s).name + "' eliminada";
-        } else if (s instanceof Ast.CreateIndex) createIndex((Ast.CreateIndex) s, r);
+        else if (s instanceof Ast.DropTable) dropTable((Ast.DropTable) s, r);
+        else if (s instanceof Ast.CreateIndex) createIndex((Ast.CreateIndex) s, r);
         else if (s instanceof Ast.DropIndex) {
             db.dropIndex(((Ast.DropIndex) s).name);
             r.message = "Índice '" + ((Ast.DropIndex) s).name + "' eliminado";
@@ -84,8 +82,24 @@ public class Executor {
     private void createTable(Ast.CreateTable s, ExecResult r) throws IOException {
         TableSchema t = new TableSchema(s.name);
         for (Ast.ColumnDef c : s.columns) t.columns.add(new TableSchema.Column(c.name, c.type, c.size, c.primaryKey, c.notNull));
+        for (Ast.ForeignKey fk : s.foreignKeys) {
+            TableSchema ref = fk.refTable.equalsIgnoreCase(s.name) ? t : db.catalog().table(fk.refTable);
+            t.foreignKeys.add(new TableSchema.ForeignKey(t.columns.get(t.indexOf(fk.column)).name, ref.name,
+                ref.columns.get(ref.indexOf(fk.refColumn)).name));
+        }
         db.createTable(t);
-        r.message = "Tabla '" + s.name + "' creada con " + s.columns.size() + " columnas";
+        r.message = "Tabla '" + s.name + "' creada con " + s.columns.size() + " columnas"
+            + (s.foreignKeys.isEmpty() ? "" : " y " + s.foreignKeys.size() + " clave(s) foránea(s)");
+    }
+
+    private void dropTable(Ast.DropTable s, ExecResult r) throws IOException {
+        List<String> detached = new ArrayList<>();
+        for (Map.Entry<TableSchema, TableSchema.ForeignKey> e : db.catalog().referencesTo(s.name))
+            if (!detached.contains(e.getKey().name)) detached.add(e.getKey().name);
+        db.dropTable(s.name, s.cascade);
+        r.message = "Tabla '" + s.name + "' eliminada";
+        if (s.cascade && !detached.isEmpty())
+            r.message += " (CASCADE: se quitaron las claves foráneas de " + String.join(", ", detached) + ")";
     }
 
     private void createIndex(Ast.CreateIndex s, ExecResult r) throws IOException {
@@ -110,6 +124,7 @@ public class Executor {
             rows.add(values);
         }
         checkPrimaryKey(t, rows, null, s);
+        checkParents(t, rows, s);
         for (Object[] values : rows) db.insert(t.name, values);
         db.persistIndexes(t.name);
         r.message = rows.size() + (rows.size() == 1 ? " fila insertada" : " filas insertadas") + " en '" + t.name + "'";
@@ -119,7 +134,8 @@ public class Executor {
         TableSchema t = db.catalog().table(s.table);
         Map<Long, Object[]> updates = new LinkedHashMap<>();
         boolean touchesKey = false;
-        for (Database.StoredRow row : matching(t, s.where)) {
+        List<Database.StoredRow> targets = matching(t, s.where);
+        for (Database.StoredRow row : targets) {
             Env env = new Env(new Object[][]{row.values}, null);
             Object[] updated = row.values.clone();
             for (Ast.Assignment a : s.assignments)
@@ -128,6 +144,8 @@ public class Executor {
         }
         for (Ast.Assignment a : s.assignments) touchesKey |= t.columns.get(a.columnIndex).primaryKey;
         if (touchesKey) checkPrimaryKey(t, new ArrayList<>(updates.values()), updates.keySet(), s);
+        checkParents(t, new ArrayList<>(updates.values()), s);
+        checkNotReferenced(t, targets, new HashSet<>(), updates, s);
         if (!updates.isEmpty()) db.rewriteRows(t.name, updates, new HashSet<>());
         r.message = updates.size() + (updates.size() == 1 ? " fila actualizada" : " filas actualizadas") + " en '" + t.name + "'";
     }
@@ -135,7 +153,9 @@ public class Executor {
     private void delete(Ast.Delete s, ExecResult r) throws IOException {
         TableSchema t = db.catalog().table(s.table);
         Set<Long> offsets = new HashSet<>();
-        for (Database.StoredRow row : matching(t, s.where)) offsets.add(row.offset);
+        List<Database.StoredRow> targets = matching(t, s.where);
+        for (Database.StoredRow row : targets) offsets.add(row.offset);
+        checkNotReferenced(t, targets, offsets, null, s);
         if (!offsets.isEmpty()) db.rewriteRows(t.name, new HashMap<>(), offsets);
         r.message = offsets.size() + (offsets.size() == 1 ? " fila eliminada" : " filas eliminadas") + " de '" + t.name + "'";
     }
@@ -164,6 +184,66 @@ public class Executor {
         if (c.type == SqlType.VARCHAR && ((String) converted).length() > c.size)
             throw new SqlRuntimeException("INSERT", "El texto excede la longitud máxima " + c.size + " de la columna '" + c.name + "'", at);
         return converted;
+    }
+
+    /** Cada valor de una columna con clave foránea debe existir en la tabla referenciada (o ser NULL). */
+    private void checkParents(TableSchema t, List<Object[]> rows, Ast.Node at) throws IOException {
+        for (TableSchema.ForeignKey fk : t.foreignKeys) {
+            int ci = t.indexOf(fk.column);
+            TableSchema parent = db.catalog().table(fk.refTable);
+            int pi = parent.indexOf(fk.refColumn);
+            boolean self = parent.name.equalsIgnoreCase(t.name);
+            for (Object[] row : rows) {
+                Object v = row[ci];
+                if (v == null) continue;
+                boolean found = false;
+                if (self) for (Object[] other : rows) if (other[pi] != null && Values.equal(other[pi], v)) { found = true; break; }
+                if (!found && !exists(parent, pi, v))
+                    throw new SqlRuntimeException("FOREIGN KEY", "Violación de clave foránea: " + t.name + "." + fk.column + " = "
+                        + Values.display(v) + " no existe en " + parent.name + "." + fk.refColumn, at);
+            }
+        }
+    }
+
+    private boolean exists(TableSchema table, int col, Object value) throws IOException {
+        Catalog.IndexDef idx = db.catalog().indexOn(table.name, table.columns.get(col).name);
+        if (idx != null) return !db.index(idx.name).equal(value).isEmpty();
+        for (Database.StoredRow r : allRows(table.name))
+            if (r.values[col] != null && Values.equal(r.values[col], value)) return true;
+        return false;
+    }
+
+    /**
+     * Antes de borrar filas (newValues == null) o de cambiar su clave (UPDATE), comprueba que ninguna otra fila
+     * las referencie. ignore son las posiciones de filas hijas que desaparecen en el mismo DELETE.
+     */
+    private void checkNotReferenced(TableSchema t, List<Database.StoredRow> rows, Set<Long> ignore,
+                                    Map<Long, Object[]> newValues, Ast.Node at) throws IOException {
+        for (Map.Entry<TableSchema, TableSchema.ForeignKey> e : db.catalog().allReferencesTo(t.name)) {
+            TableSchema child = e.getKey();
+            TableSchema.ForeignKey fk = e.getValue();
+            int pi = t.indexOf(fk.refColumn), ci = child.indexOf(fk.column);
+            boolean self = child.name.equalsIgnoreCase(t.name);
+            Catalog.IndexDef idx = db.catalog().indexOn(child.name, child.columns.get(ci).name);
+            for (Database.StoredRow row : rows) {
+                Object v = row.values[pi];
+                if (v == null) continue;
+                if (newValues != null) {
+                    Object now = newValues.get(row.offset)[pi];
+                    if (now != null && Values.equal(now, v)) continue; // la clave no cambió
+                }
+                boolean referenced = false;
+                if (idx != null) {
+                    for (Long off : db.index(idx.name).equal(v)) if (!(self && ignore.contains(off))) { referenced = true; break; }
+                } else {
+                    for (Database.StoredRow c : allRows(child.name))
+                        if (c.values[ci] != null && Values.equal(c.values[ci], v) && !(self && ignore.contains(c.offset))) { referenced = true; break; }
+                }
+                if (referenced)
+                    throw new SqlRuntimeException("FOREIGN KEY", "No se puede " + (newValues == null ? "eliminar" : "modificar") + " " + t.name + "."
+                        + fk.refColumn + " = " + Values.display(v) + ": la referencia " + child.name + "." + fk.column, at);
+            }
+        }
     }
 
     /** Rechaza claves primarias repetidas entre las filas nuevas y las existentes. */

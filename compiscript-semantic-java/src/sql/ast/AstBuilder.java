@@ -36,8 +36,23 @@ public class AstBuilder extends SqlBaseVisitor<Ast.Node> {
 
     @Override public Ast.Node visitCreateTable(SqlParser.CreateTableContext ctx) {
         List<Ast.ColumnDef> cols = new ArrayList<>();
-        for (SqlParser.ColumnDefContext c : ctx.columnDef()) cols.add((Ast.ColumnDef) visit(c));
-        return at(new Ast.CreateTable(name(ctx.ident()), cols), ctx);
+        List<Ast.ForeignKey> fks = new ArrayList<>();
+        for (SqlParser.TableElementContext e : ctx.tableElement()) {
+            if (e instanceof SqlParser.ColumnElementContext) {
+                SqlParser.ColumnDefContext def = ((SqlParser.ColumnElementContext) e).columnDef();
+                cols.add((Ast.ColumnDef) visit(def));
+                // REFERENCES escrito junto a la columna equivale a un FOREIGN KEY
+                for (SqlParser.ColumnConstraintContext c : def.columnConstraint())
+                    if (c instanceof SqlParser.ReferencesConstraintContext) {
+                        SqlParser.ReferencesConstraintContext r = (SqlParser.ReferencesConstraintContext) c;
+                        fks.add(at(new Ast.ForeignKey(name(def.ident()), name(r.ident(0)), name(r.ident(1))), r));
+                    }
+            } else {
+                SqlParser.ForeignKeyElementContext f = (SqlParser.ForeignKeyElementContext) e;
+                fks.add(at(new Ast.ForeignKey(name(f.ident(0)), name(f.ident(1)), name(f.ident(2))), f));
+            }
+        }
+        return at(new Ast.CreateTable(name(ctx.ident()), cols, fks), ctx);
     }
 
     @Override public Ast.Node visitColumnDef(SqlParser.ColumnDefContext ctx) {
@@ -46,7 +61,8 @@ public class AstBuilder extends SqlBaseVisitor<Ast.Node> {
         int size = dt.INTLIT() != null ? parseSize(dt.INTLIT().getText()) : 0;
         boolean pk = false, nn = false;
         for (SqlParser.ColumnConstraintContext c : ctx.columnConstraint()) {
-            if (c instanceof SqlParser.PkConstraintContext) pk = true; else nn = true;
+            if (c instanceof SqlParser.PkConstraintContext) pk = true;
+            else if (c instanceof SqlParser.NotNullConstraintContext) nn = true;
         }
         return at(new Ast.ColumnDef(name(ctx.ident()), type, size, pk, nn), ctx);
     }
@@ -56,7 +72,7 @@ public class AstBuilder extends SqlBaseVisitor<Ast.Node> {
     }
 
     @Override public Ast.Node visitDropTable(SqlParser.DropTableContext ctx) {
-        return at(new Ast.DropTable(name(ctx.ident())), ctx);
+        return at(new Ast.DropTable(name(ctx.ident()), ctx.CASCADE() != null), ctx);
     }
 
     @Override public Ast.Node visitCreateIndex(SqlParser.CreateIndexContext ctx) {

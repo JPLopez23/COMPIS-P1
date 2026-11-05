@@ -65,12 +65,45 @@ public class SqlSemanticAnalyzer {
             if (c.primaryKey && ++pks > 1) error("COLUMN", "La tabla '" + s.name + "' declara más de una PRIMARY KEY", c);
             schema.columns.add(new TableSchema.Column(c.name, c.type, c.size, c.primaryKey, c.notNull));
         }
+        for (Ast.ForeignKey fk : s.foreignKeys) foreignKey(fk, schema, s.name);
         if (!exists) cat.addTable(schema);
     }
 
+    /** Valida FOREIGN KEY (col) REFERENCES t(col) y, si es correcta, la agrega al esquema en construcción. */
+    private void foreignKey(Ast.ForeignKey fk, TableSchema schema, String tableName) {
+        int ci = schema.indexOf(fk.column);
+        if (ci < 0) { error("COLUMN", "La columna '" + fk.column + "' de la clave foránea no existe en la tabla '" + tableName + "'", fk); return; }
+        TableSchema ref = fk.refTable.equalsIgnoreCase(tableName) ? schema : cat.table(fk.refTable);
+        if (ref == null) { error("TABLE", "La tabla '" + fk.refTable + "' referenciada por la clave foránea no existe", fk); return; }
+        int ri = ref.indexOf(fk.refColumn);
+        if (ri < 0) { error("COLUMN", "La columna '" + fk.refColumn + "' no existe en la tabla '" + ref.name + "'", fk); return; }
+        TableSchema.Column child = schema.columns.get(ci), parent = ref.columns.get(ri);
+        if (!parent.primaryKey) {
+            error("COLUMN", "La columna referenciada '" + ref.name + "." + parent.name + "' debe ser PRIMARY KEY", fk);
+            return;
+        }
+        if (child.type != parent.type) {
+            error("TYPE", "Tipos incompatibles en la clave foránea: " + child.name + " es " + child.type + " y " + ref.name + "." + parent.name + " es " + parent.type, fk);
+            return;
+        }
+        for (TableSchema.ForeignKey old : schema.foreignKeys)
+            if (old.column.equalsIgnoreCase(child.name)) { error("COLUMN", "La columna '" + child.name + "' ya tiene una clave foránea", fk); return; }
+        schema.foreignKeys.add(new TableSchema.ForeignKey(child.name, ref.name, parent.name));
+    }
+
+    /** Sin CASCADE no se puede eliminar una tabla que otras tablas referencian; con CASCADE se quitan esas claves foráneas. */
     private void dropTable(Ast.DropTable s) {
-        if (cat.table(s.name) == null) error("TABLE", "La tabla '" + s.name + "' no existe", s);
-        else cat.removeTable(s.name);
+        if (cat.table(s.name) == null) { error("TABLE", "La tabla '" + s.name + "' no existe", s); return; }
+        List<java.util.Map.Entry<TableSchema, TableSchema.ForeignKey>> refs = cat.referencesTo(s.name);
+        if (!refs.isEmpty() && !s.cascade) {
+            List<String> who = new ArrayList<>();
+            for (java.util.Map.Entry<TableSchema, TableSchema.ForeignKey> e : refs) who.add(e.getKey().name + "(" + e.getValue().column + ")");
+            error("REFERENCE", "No se puede eliminar la tabla '" + s.name + "' porque la referencian: " + String.join(", ", who)
+                + ". Usa DROP TABLE " + s.name + " CASCADE para quitar esas claves foráneas", s);
+            return;
+        }
+        if (s.cascade) cat.dropReferencesTo(s.name);
+        cat.removeTable(s.name);
     }
 
     private void createIndex(Ast.CreateIndex s) {
