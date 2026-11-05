@@ -35,7 +35,7 @@ activación. El lenguaje intermedio está documentado en
 
 El mismo repositorio incluye el **intérprete SQL con almacenamiento en archivos** (sin
 ningún DBMS): lexer y parser ANTLR (`grammar/Sql.g4`), AST, análisis semántico, ejecución sobre
-`metadata.txt`, un `.csv` por tabla e índices en `indexes/*.idx`, IDE Swing y 134 pruebas
+`metadata.txt`, un `.csv` por tabla e índices en `indexes/*.idx`, IDE Swing y 153 pruebas
 automáticas. Se compila con el mismo `build.bat` / `build.sh`:
 
 ```bash

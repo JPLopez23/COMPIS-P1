@@ -27,13 +27,17 @@ build.bat          # Windows        ./build.sh   # Linux / Mac
 | Pruebas automáticas | `java -cp "out;lib\antlr-4.13.2-complete.jar" tests.SqlTestRunner` |
 
 La base de datos por defecto es la carpeta `database/` (se crea sola). Los ejemplos de
-`examples/sql/` se ejecutan en orden: `01_esquema.sql` (tablas y datos), `02_consultas.sql`
-(SELECT, JOIN, agregaciones, subconsultas) y `03_indices_y_cambios.sql` (índices, UPDATE, DELETE).
+`examples/sql/` se ejecutan en orden: `01_esquema.sql` (tablas, claves foráneas y datos),
+`02_consultas.sql` (SELECT, JOIN, agregaciones, subconsultas), `03_indices_y_cambios.sql` (índices,
+UPDATE, DELETE), `04_errores.sql` (**ejemplo de errores semánticos**: no ejecuta nada y lista todos los
+errores con línea y columna; correrlo antes de `05`) y `05_cascade.sql` (`DROP TABLE ... CASCADE`).
 
 ```bash
 java -cp "out;lib\antlr-4.13.2-complete.jar" Main sql examples\sql\01_esquema.sql -db demo
 java -cp "out;lib\antlr-4.13.2-complete.jar" Main sql examples\sql\02_consultas.sql -db demo
 java -cp "out;lib\antlr-4.13.2-complete.jar" Main sql examples\sql\03_indices_y_cambios.sql -db demo
+java -cp "out;lib\antlr-4.13.2-complete.jar" Main sql examples\sql\04_errores.sql -db demo
+java -cp "out;lib\antlr-4.13.2-complete.jar" Main sql examples\sql\05_cascade.sql -db demo
 ```
 
 ## Interfaz gráfica
@@ -64,6 +68,7 @@ TABLE estudiantes
 COLUMN id INT PRIMARY_KEY
 COLUMN nombre VARCHAR(50) NOT_NULL
 COLUMN edad INT
+FOREIGN_KEY curso_id cursos id
 INDEX idx_edad estudiantes edad
 ```
 
@@ -77,13 +82,15 @@ distinto, ordenado por valor. La *posición* es el offset en bytes de la fila de
 así una búsqueda por índice lee solo las filas necesarias (`seek` directo), sin recorrer el
 archivo. Los NULL no se indexan.
 
-**Restricciones**: `PRIMARY KEY` (única y no nula; una por tabla) y `NOT NULL`.
+**Restricciones**: `PRIMARY KEY` (única y no nula; una por tabla), `NOT NULL` y `FOREIGN KEY`.
 
 ## Lenguaje soportado
 
 - Tipos: `INT`, `FLOAT`, `VARCHAR(n)`, `BOOLEAN`, `DATE` (`'YYYY-MM-DD'`). Las palabras reservadas no
   distinguen mayúsculas; los nombres de tablas, columnas e índices tampoco.
-- DDL: `CREATE TABLE`, `DROP TABLE`, `CREATE INDEX nombre ON tabla(columna)`, `DROP INDEX nombre`.
+- DDL: `CREATE TABLE`, `DROP TABLE t [CASCADE | RESTRICT]`, `CREATE INDEX nombre ON tabla(columna)`,
+  `DROP INDEX nombre`. Las claves foráneas se escriben junto a la columna
+  (`curso_id INT REFERENCES cursos(id)`) o al final de la tabla (`FOREIGN KEY (curso_id) REFERENCES cursos(id)`).
 - DML: `INSERT INTO t [(cols)] VALUES (...), (...)`, `UPDATE t SET c = expr, ... [WHERE]`,
   `DELETE FROM t [WHERE]`.
 - Consultas: `SELECT lista | * | t.* FROM t [alias] [INNER] JOIN t2 [alias] ON cond ... [WHERE]
@@ -117,6 +124,20 @@ ejecución: una subconsulta escalar que devuelve **más de un registro**, la div
 **clave primaria duplicada**. Las sentencias anteriores del mismo script ya quedaron aplicadas
 (no hay transacciones).
 
+## Claves foráneas y DROP TABLE ... CASCADE
+
+- La columna referenciada debe existir, ser `PRIMARY KEY` y tener el mismo tipo que la columna que la
+  referencia; una tabla puede referenciarse a sí misma.
+- **`DROP TABLE t`** (o `RESTRICT`) falla en el análisis semántico si otra tabla tiene una clave foránea hacia `t`:
+  `No se puede eliminar la tabla 't' porque la referencian: hijo(col). Usa DROP TABLE t CASCADE ...`.
+  No se borra nada. Una tabla que solo se referencia a sí misma sí se puede eliminar.
+- **`DROP TABLE t CASCADE`** elimina `t` (su `.csv` y sus índices) y quita de `metadata.txt` las claves foráneas que
+  otras tablas tenían hacia ella. Las tablas dependientes y sus datos se conservan (igual que en PostgreSQL);
+  no es recursivo ni borra tablas hijas.
+- En ejecución se validan las claves foráneas: `INSERT`/`UPDATE` rechazan un valor que no existe en la tabla
+  referenciada (NULL siempre se acepta), y `DELETE`/`UPDATE` rechazan borrar o cambiar una clave que otra
+  fila referencia (`Violación de clave foránea ...`). Usan los índices si existen. No hay `ON DELETE CASCADE`.
+
 ## Ejecución e índices
 
 - Una consulta resuelve el WHERE con un índice cuando hay una condición `columna op constante`
@@ -143,7 +164,7 @@ ejecución: una subconsulta escalar que devuelve **más de un registro**, la div
 | `sql.exec` | `Executor` (interpretación, uso de índices), `ExecResult`, `SqlRuntimeException` |
 | `sql` | `SqlPipeline` (une todas las fases), `SqlCli` |
 | `gui.SqlWindow` | IDE Swing; reutiliza `Theme`, `Pill`, `RoundedButton`, `CollectingErrorListener`, `ParseTreeToDot` y `GraphvizUtil` del IDE de Compiscript |
-| `tests.SqlTestRunner` | 134 pruebas automáticas |
+| `tests.SqlTestRunner` | 153 pruebas automáticas |
 
 ## Entregas
 
@@ -160,6 +181,5 @@ ejecución: una subconsulta escalar que devuelve **más de un registro**, la div
 
 ## Limitaciones conocidas
 
-Sin `LEFT/RIGHT JOIN`, `DISTINCT`, `LIMIT`, `LIKE`, `BETWEEN`, `ALTER TABLE`, claves foráneas,
-transacciones ni concurrencia (un solo proceso a la vez sobre la carpeta). Cada sentencia lee el
+Sin `ON DELETE CASCADE`, `LEFT/RIGHT JOIN`, `DISTINCT`, `LIMIT`, `LIKE`, `BETWEEN`, `ALTER TABLE`, transacciones ni concurrencia (un solo proceso a la vez sobre la carpeta). Cada sentencia lee el
 `.csv` completo cuando no puede usar un índice.

@@ -1,4 +1,4 @@
--- Esquema y datos de ejemplo (Entrega 4: CREATE, INSERT)
+-- Esquema y datos de ejemplo (Entrega 4: CREATE, INSERT, claves foráneas)
 CREATE TABLE estudiantes (
   id INT PRIMARY KEY,
   nombre VARCHAR(50) NOT NULL,
@@ -16,7 +16,9 @@ CREATE TABLE inscripciones (
   id INT PRIMARY KEY,
   estudiante_id INT NOT NULL,
   curso_id INT NOT NULL,
-  nota FLOAT
+  nota FLOAT,
+  FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id),
+  FOREIGN KEY (curso_id) REFERENCES cursos(id)
 );
 
 INSERT INTO estudiantes VALUES
