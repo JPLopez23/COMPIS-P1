@@ -111,6 +111,8 @@ public class SqlTestRunner {
         semantic();
         System.out.println("== CREATE / DROP / INSERT y almacenamiento ==");
         storage();
+        System.out.println("== Claves foráneas y DROP TABLE CASCADE ==");
+        foreignKeys();
         System.out.println("== SELECT / WHERE / UPDATE / DELETE ==");
         selectTests();
         System.out.println("== JOIN, agregaciones, GROUP BY ==");
@@ -345,6 +347,152 @@ public class SqlTestRunner {
             Db d = new Db(true);
             d.ok("DROP TABLE cursos; CREATE TABLE cursos (id INT);");
             eq(0, d.rows("SELECT * FROM cursos;").size());
+        });
+    }
+
+    // ── Claves foráneas y DROP TABLE ... CASCADE ────────────────────────────
+    private static final String FK_SEED =
+        "CREATE TABLE padre (id INT PRIMARY KEY, nombre VARCHAR(20));"
+        + "CREATE TABLE hijo (id INT PRIMARY KEY, padre_id INT REFERENCES padre(id));"
+        + "CREATE TABLE nieto (id INT PRIMARY KEY, hijo_id INT, FOREIGN KEY (hijo_id) REFERENCES hijo(id));"
+        + "INSERT INTO padre VALUES (1,'a'),(2,'b');"
+        + "INSERT INTO hijo VALUES (10,1),(11,1),(12,NULL);"
+        + "INSERT INTO nieto VALUES (100,10);";
+
+    private static void foreignKeys() throws Exception {
+        test("FOREIGN KEY (en la columna o al final) se guarda en metadata.txt y persiste", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            String meta = new String(Files.readAllBytes(d.dir.resolve("metadata.txt")), "UTF-8");
+            has(meta, "FOREIGN_KEY padre_id padre id");
+            has(meta, "FOREIGN_KEY hijo_id hijo id");
+            d.reopen();
+            eq(1, d.db.catalog().table("hijo").foreignKeys.size());
+            eq("padre", d.db.catalog().table("hijo").foreignKeys.get(0).refTable);
+        });
+        test("AST de FOREIGN KEY y de DROP TABLE CASCADE", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            SqlPipeline.Result r = d.check("DROP TABLE padre CASCADE;");
+            has(r.astText, "DropTable padre CASCADE");
+            r = d.check("CREATE TABLE x (a INT, b INT REFERENCES padre(id), FOREIGN KEY (a) REFERENCES padre(id));");
+            has(r.astText, "ForeignKey b -> padre(id)");
+            has(r.astText, "ForeignKey a -> padre(id)");
+        });
+        String[][] bad = {
+            {"CREATE TABLE x (a INT REFERENCES fantasma(id));", "La tabla 'fantasma' referenciada"},
+            {"CREATE TABLE x (a INT REFERENCES padre(zzz));", "La columna 'zzz' no existe en la tabla 'padre'"},
+            {"CREATE TABLE x (a INT REFERENCES padre(nombre));", "debe ser PRIMARY KEY"},
+            {"CREATE TABLE x (a VARCHAR(5) REFERENCES padre(id));", "Tipos incompatibles en la clave foránea"},
+            {"CREATE TABLE x (a INT, FOREIGN KEY (zzz) REFERENCES padre(id));", "La columna 'zzz' de la clave foránea no existe"},
+        };
+        for (String[] c : bad) {
+            test("error: " + c[0], () -> {
+                Db d = new Db(false);
+                d.ok(FK_SEED);
+                has(d.errors(c[0]), c[1]);
+            });
+        }
+        test("DROP TABLE sin CASCADE falla si otra tabla la referencia, y no borra nada", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            SqlPipeline.Result r = d.run("DROP TABLE padre;");
+            has(r.report(), "No se puede eliminar la tabla 'padre' porque la referencian: hijo(padre_id)");
+            has(r.report(), "DROP TABLE padre CASCADE");
+            has(r.report(), "[1:");
+            isTrue(Files.exists(d.dir.resolve("padre.csv")), "padre.csv no debía borrarse");
+            isTrue(d.run("DROP TABLE padre RESTRICT;").semanticErrors.size() == 1, "RESTRICT se comporta como el valor por defecto");
+            eq(2, d.rows("SELECT id FROM padre;").size());
+        });
+        test("DROP TABLE ... CASCADE elimina la tabla y quita las claves foráneas que la referenciaban", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            ExecResult r = d.last("DROP TABLE padre CASCADE;");
+            has(r.message, "CASCADE: se quitaron las claves foráneas de hijo");
+            isTrue(!Files.exists(d.dir.resolve("padre.csv")), "padre.csv sigue existiendo");
+            eq(3, d.rows("SELECT id FROM hijo;").size()); // los datos de la tabla hija se conservan
+            d.ok("INSERT INTO hijo VALUES (13, 999);");    // ya no hay clave foránea que validar
+            String meta = new String(Files.readAllBytes(d.dir.resolve("metadata.txt")), "UTF-8");
+            isTrue(!meta.contains("FOREIGN_KEY padre_id"), "la clave foránea debía quitarse de metadata.txt");
+            has(meta, "FOREIGN_KEY hijo_id hijo id"); // las demás se conservan
+            d.reopen();
+            isTrue(d.db.catalog().table("hijo").foreignKeys.isEmpty(), "hijo no debía tener claves foráneas");
+        });
+        test("CASCADE no es recursivo: nieto sigue referenciando a hijo", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            d.ok("DROP TABLE padre CASCADE;");
+            has(d.errors("DROP TABLE hijo;"), "la referencian: nieto(hijo_id)");
+            d.ok("DROP TABLE hijo CASCADE;");
+            eq(1, d.rows("SELECT id FROM nieto;").size());
+        });
+        test("se puede eliminar primero la hija y luego la padre, incluso en el mismo script", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            d.ok("DROP TABLE nieto; DROP TABLE hijo; DROP TABLE padre;");
+            eq(0, d.db.catalog().tables().size());
+        });
+        test("una tabla que se referencia a sí misma se puede eliminar sin CASCADE", () -> {
+            Db d = new Db(false);
+            d.ok("CREATE TABLE arbol (id INT PRIMARY KEY, madre INT REFERENCES arbol(id));");
+            d.ok("INSERT INTO arbol VALUES (1, NULL), (2, 1), (3, 2);");
+            d.ok("DROP TABLE arbol;");
+            isTrue(d.db.catalog().table("arbol") == null, "arbol debía eliminarse");
+        });
+        test("INSERT con una clave foránea inexistente se rechaza; NULL y valores válidos se aceptan", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            SqlPipeline.Result r = d.run("INSERT INTO hijo VALUES (20, 99);");
+            has(r.report(), "Violación de clave foránea: hijo.padre_id = 99 no existe en padre.id");
+            eq(3, d.rows("SELECT id FROM hijo;").size());
+            d.ok("INSERT INTO hijo VALUES (20, 2), (21, NULL);");
+            eq(5, d.rows("SELECT id FROM hijo;").size());
+        });
+        test("INSERT autorreferenciado dentro del mismo lote", () -> {
+            Db d = new Db(false);
+            d.ok("CREATE TABLE arbol (id INT PRIMARY KEY, madre INT REFERENCES arbol(id));");
+            d.ok("INSERT INTO arbol VALUES (1, NULL), (2, 1);");
+            has(d.run("INSERT INTO arbol VALUES (3, 77);").report(), "Violación de clave foránea");
+        });
+        test("UPDATE de la columna foránea se valida", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            has(d.run("UPDATE hijo SET padre_id = 99 WHERE id = 10;").report(), "Violación de clave foránea");
+            d.ok("UPDATE hijo SET padre_id = 2 WHERE id = 10;");
+            eq(list("2"), d.rows("SELECT padre_id FROM hijo WHERE id = 10;"));
+        });
+        test("DELETE de una fila referenciada se rechaza; las no referenciadas se borran", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            has(d.run("DELETE FROM padre WHERE id = 1;").report(), "No se puede eliminar padre.id = 1: la referencia hijo.padre_id");
+            eq(2, d.rows("SELECT id FROM padre;").size());
+            d.ok("DELETE FROM padre WHERE id = 2;");
+            eq(list("1"), d.rows("SELECT id FROM padre;"));
+            d.ok("DELETE FROM nieto; DELETE FROM hijo WHERE padre_id = 1; DELETE FROM padre WHERE id = 1;");
+            eq(0, d.rows("SELECT id FROM padre;").size());
+        });
+        test("UPDATE de una clave referenciada se rechaza, salvo que no cambie", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            has(d.run("UPDATE padre SET id = 50 WHERE id = 1;").report(), "No se puede modificar padre.id = 1");
+            d.ok("UPDATE padre SET nombre = 'z' WHERE id = 1;");
+            d.ok("UPDATE padre SET id = 60 WHERE id = 2;"); // nadie la referencia
+            eq(list("1", "60"), d.rows("SELECT id FROM padre ORDER BY id;"));
+        });
+        test("las comprobaciones funcionan también con índices sobre las columnas", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            d.ok("CREATE INDEX i_hijo ON hijo(padre_id);");
+            has(d.run("DELETE FROM padre WHERE id = 1;").report(), "No se puede eliminar");
+            d.ok("INSERT INTO hijo VALUES (30, 2);");
+            has(d.run("DELETE FROM padre WHERE id = 2;").report(), "No se puede eliminar");
+        });
+        test("DROP TABLE ... CASCADE elimina también los índices de la tabla", () -> {
+            Db d = new Db(false);
+            d.ok(FK_SEED);
+            d.ok("CREATE INDEX i_padre ON padre(nombre);");
+            d.ok("DROP TABLE padre CASCADE;");
+            isTrue(!Files.exists(d.dir.resolve("indexes").resolve("i_padre.idx")), "i_padre.idx sigue existiendo");
         });
     }
 
