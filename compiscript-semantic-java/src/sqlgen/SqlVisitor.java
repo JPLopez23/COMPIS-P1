@@ -29,6 +29,20 @@ public interface SqlVisitor<T> extends ParseTreeVisitor<T> {
 	 */
 	T visitCreateTable(SqlParser.CreateTableContext ctx);
 	/**
+	 * Visit a parse tree produced by the {@code columnElement}
+	 * labeled alternative in {@link SqlParser#tableElement}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitColumnElement(SqlParser.ColumnElementContext ctx);
+	/**
+	 * Visit a parse tree produced by the {@code foreignKeyElement}
+	 * labeled alternative in {@link SqlParser#tableElement}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitForeignKeyElement(SqlParser.ForeignKeyElementContext ctx);
+	/**
 	 * Visit a parse tree produced by {@link SqlParser#columnDef}.
 	 * @param ctx the parse tree
 	 * @return the visitor result
@@ -48,6 +62,13 @@ public interface SqlVisitor<T> extends ParseTreeVisitor<T> {
 	 * @return the visitor result
 	 */
 	T visitNotNullConstraint(SqlParser.NotNullConstraintContext ctx);
+	/**
+	 * Visit a parse tree produced by the {@code referencesConstraint}
+	 * labeled alternative in {@link SqlParser#columnConstraint}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitReferencesConstraint(SqlParser.ReferencesConstraintContext ctx);
 	/**
 	 * Visit a parse tree produced by {@link SqlParser#dataType}.
 	 * @param ctx the parse tree

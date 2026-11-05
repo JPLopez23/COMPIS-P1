@@ -19,11 +19,16 @@ statement
     | selectStmt
     ;
 
-createTable : CREATE TABLE ident LPAREN columnDef (COMMA columnDef)* RPAREN ;
+createTable : CREATE TABLE ident LPAREN tableElement (COMMA tableElement)* RPAREN ;
+tableElement
+    : columnDef                                                                 #columnElement
+    | FOREIGN KEY LPAREN ident RPAREN REFERENCES ident LPAREN ident RPAREN      #foreignKeyElement
+    ;
 columnDef   : ident dataType columnConstraint* ;
 columnConstraint
     : PRIMARY KEY      #pkConstraint
     | NOT NULL         #notNullConstraint
+    | REFERENCES ident LPAREN ident RPAREN   #referencesConstraint
     ;
 dataType
     : INT
@@ -33,7 +38,7 @@ dataType
     | DATE
     ;
 
-dropTable   : DROP TABLE ident ;
+dropTable   : DROP TABLE ident (CASCADE | RESTRICT)? ;
 createIndex : CREATE INDEX ident ON ident LPAREN ident RPAREN ;
 dropIndex   : DROP INDEX ident ;
 
@@ -128,6 +133,10 @@ IS      : 'is' ;
 NULL    : 'null' ;
 PRIMARY : 'primary' ;
 KEY     : 'key' ;
+FOREIGN : 'foreign' ;
+REFERENCES : 'references' ;
+CASCADE : 'cascade' ;
+RESTRICT : 'restrict' ;
 COUNT   : 'count' ;
 SUM     : 'sum' ;
 AVG     : 'avg' ;
