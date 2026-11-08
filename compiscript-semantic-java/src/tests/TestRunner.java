@@ -71,11 +71,11 @@ public class TestRunner {
         check("tac_comparison_value",   exprLogic, tacHas("G.flag = G.a != G.b"));
         check("tac_short_circuit",      exprLogic, tacHas("if G.a >= G.b goto", "if G.b < G.c goto", "t0 = true", "t0 = false"));
         check("tac_ternary",            exprLogic, tacHas("G.t = t0"));
-        check("tac_if_else",            exprLogic, tacHas("print \"si\"", "print \"no\""));
+        check("tac_if_else",            exprLogic, tacHas("prints \"si\"", "prints \"no\""));
         check("tac_while_break_continue", flow,    tacHas("goto L1", "if G.i >= 10 goto L3", "if G.i > 7 goto L3"));
         check("tac_for",                flow,      tacHas("a = 0", "a = a + 1"));
         check("tac_do_while",           flow,      tacHas("G.total = G.total - 1", "if G.total > 0 goto"));
-        check("tac_switch",             flow,      tacHas("$sw1 = G.k", "if $sw1 == 1 goto", "print \"dos\""));
+        check("tac_switch",             flow,      tacHas("$sw1 = G.k", "if $sw1 == 1 goto", "prints \"dos\""));
         check("tac_foreach",            flow,      tacHas("len $arr", "v = $arr"));
         check("tac_function_call",      funcs,     tacHas("param 6", "call fib", "function fib:"));
         check("tac_recursion",          funcs,     tacHas("t0 = call fib, 1", "t1 = call fib, 1", "t0 = t0 + t1"));
@@ -83,14 +83,14 @@ public class TestRunner {
         check("tac_function_value",     funcs,     tacHas("G.f = closure fib", "callind G.f, 1"));
         check("tac_mutual_recursion",   funcs,     tacHas("call esImpar", "call esPar"));
         check("tac_new_and_ctor",       objs,      tacHas("t0 = new Punto3, 12", "call Punto_constructor, 3", "call Punto_$init, 1"));
-        check("tac_field_access",       objs,      tacHas("this.x = x", "t0 = this.x", "G.p.z = 10"));
+        check("tac_field_access",       objs,      tacHas("this.x@0 = x", "t0 = this.x@0", "G.p.z@8 = 10"));
         check("tac_method_call_this",   objs,      tacHas("param G.p", "call Punto_mover, 2", "param this"));
         check("tac_inheritance_layout", objs,      r -> r.activationMarkdown.contains("`Punto3` — 12 B")
                                                          && r.activationMarkdown.contains("| 8 | `z` |"));
-        check("tac_list",               objs,      tacHas("newarray 2", "t0[0] = t1", "t0.x = t1"));
+        check("tac_list",               objs,      tacHas("newarray 2", "t0[0] = t1", "t0.x@0 = t1"));
         check("tac_edge_cases",         edge,      tacHas("call nada, 0", "G.m[t0] = t1", "G.w = t0"));
-        check("tac_nested_fn_in_method", edge,     tacHas("function Caja_crear_interna:", "t0 = this.v"));
-        check("tac_wellformed_all",     "",        r -> allWellFormed(tacDir, FIXTURES, EXAMPLES.resolve("ok")));
+        check("tac_nested_fn_in_method", edge,     tacHas("function Caja_crear_interna:", "t0 = env(1).this.v@0", "call Caja_crear_interna, 0, env(0)"));
+        check("tac_wellformed_all",     "",        r -> allWellFormed(tacDir, FIXTURES, EXAMPLES.resolve("ok"), MIPS_DIR));
 
         // Tabla de símbolos extendida y registros de activación
         check("sym_offsets",            funcs,     r -> symbolOffset(r, "acc") == 20 && symbolOffset(r, "x") == 16);
@@ -103,6 +103,76 @@ public class TestRunner {
         check("tac_not_on_semantic_err", fixture("types_arith_err.cps"),  r -> r.tac.isEmpty() && !r.isOk());
         check("tac_not_on_syntax_err",   example("err/syntax_error.cps"), r -> r.tac.isEmpty() && !r.syntaxErrors.isEmpty());
         check("tac_not_on_lexical_err",  example("err/lexical_error.cps"), r -> r.tac.isEmpty() && !r.lexicalErrors.isEmpty());
+
+        // Operadores tipados del TAC (la información que necesita el generador de MIPS)
+        String cadenas = read(MIPS_DIR.resolve("cadenas.cps"));
+        check("tac_string_concat",      cadenas,   tacHas("++", "==s", "!=s", "prints "));
+        check("tac_print_bool",         read(MIPS_DIR.resolve("booleanos.cps")), tacHas("printb "));
+        check("tac_call_has_link",      funcs,     tacHas("call fib, 1, env(1)", "call mk_add, 1, env(1)"));
+
+        // ── Generación de código MIPS: ejecución en el simulador ─────────────
+        String[] programas = {"aritmetica", "booleanos", "cadenas", "control", "funciones", "clases", "listas",
+                              "excepciones", "derrame", "algoritmos", "integral", "closures_valores"};
+        for (String p : programas)
+            check("mips_run_" + p, read(MIPS_DIR.resolve(p + ".cps")), runsAs(p));
+        String[] ejemplos = {"hello", "arrays_control", "classes", "closures", "demo_completo", "functions"};
+        for (String e : ejemplos)
+            check("mips_run_ejemplo_" + e, example("ok/" + e + ".cps"), runsAs("ex_" + e));
+
+        // Secuencias de llamada y retorno
+        String fn = read(MIPS_DIR.resolve("funciones.cps"));
+        check("mips_prologue_epilogue", fn, mipsHas("f_fib:", "addiu $sp, $sp, -", "sw $ra, 0($sp)", "sw $fp, 4($sp)",
+                "sw $a0, 8($sp)", "move $fp, $sp", "lw $ra, 0($fp)", "lw $t8, 4($fp)", "addiu $sp, $fp,", "jr $ra"));
+        check("mips_call_sequence",     fn, mipsHas("addiu $sp, $sp, -4", "sw $s0, 0($sp)", "jal f_fib", "addiu $sp, $sp, 4"));
+        check("mips_return_value_slot", fn, mipsHas("sw $v0, 12($fp)"));
+        check("mips_access_link",       fn, mipsHas("lw $a0, 8($a0)", "move $a0, $fp"));
+        check("mips_callee_saved",      fn, mipsHas("sw $s0, 28($fp)      # guarda $s0", "lw $s0, 28($fp)      # restaura $s0"));
+        check("mips_indirect_call",     fn, mipsHas("jalr $t8", "# G.f = closure fib"));
+        check("mips_main_exits",        fn, mipsHas("main:", "li $v0, 10"));
+
+        // Asignación de registros: getReg()
+        check("mips_getreg_temps_in_s", read(MIPS_DIR.resolve("aritmetica.cps")), mipsHas("addu $s", "mul $s", "subu $s"));
+        check("mips_getreg_no_spill",   read(MIPS_DIR.resolve("aritmetica.cps")), r -> spills(r) == 0);
+        check("mips_getreg_spill",      read(MIPS_DIR.resolve("derrame.cps")), r -> spills(r) > 0
+                && r.mips.contains("# derrama t") && r.mips.contains("# recarga t"));
+        check("mips_registers_report",  fn, r -> r.registerReport.contains("fib: usa $s0") && r.registerReport.contains("total de derrames"));
+
+        // Portabilidad: solo instrucciones que entienden SPIM y MARS
+        check("mips_portable_instructions", fn, r -> unsupportedMnemonics(r.mips).isEmpty());
+        check("mips_portable_all", "", r -> allPortable(MIPS_DIR));
+        check("mips_comments_ascii",    fn, r -> commentsAscii(r.mips));
+
+        // Casos fallidos
+        check("mips_not_on_semantic_err", fixture("types_arith_err.cps"), r -> r.mips.isEmpty() && !r.isOk());
+        check("mips_not_on_syntax_err",   example("err/syntax_error.cps"), r -> r.mips.isEmpty() && !r.syntaxErrors.isEmpty());
+        check("mips_not_on_lexical_err",  example("err/lexical_error.cps"), r -> r.mips.isEmpty() && !r.lexicalErrors.isEmpty());
+        check("mips_uncaught_exception",  "let a: integer[] = [1];\nprint(a[3]);\nprint(7);\n",
+                r -> r.isOk() && r.runOutput.equals("Excepcion no capturada: indice fuera de rango\n"));
+        check("mips_div_by_zero",         "let z: integer = 0;\nprint(5 % z);\n",
+                r -> r.runOutput.equals("Excepcion no capturada: division por cero\n"));
+        check("mips_null_reference",      "class A { var v: integer = 1; }\nlet a: A = null;\nprint(a.v);\n",
+                r -> r.runOutput.equals("Excepcion no capturada: referencia nula\n"));
+        check("mips_infinite_loop_stopped", "while (true) { }\n", r -> {
+            mips.MipsSimulator.Result s = mips.MipsSimulator.run(r.mips, 10_000, "");
+            return s.error != null && s.error.contains("límite");
+        });
+        check("mips_simulator_rejects_bad_asm", "", r -> {
+            mips.MipsSimulator.Result s = mips.MipsSimulator.run("main:\n    frobnicate $t0, $t1\n");
+            return s.error != null && s.error.contains("no soportada");
+        });
+        check("mips_simulator_alignment", "", r -> {
+            mips.MipsSimulator.Result s = mips.MipsSimulator.run("main:\n    li $t0, 268500993\n    lw $t1, 0($t0)\n    li $v0, 10\n    syscall\n");
+            return s.error != null && s.error.contains("desalineado");
+        });
+        check("mips_deterministic",       fn, r -> r.runOutput.equals(new PipelineRunner().run(fn).runOutput) && r.mips.equals(new PipelineRunner().run(fn).mips));
+
+        // Validación en el simulador MARS real (opcional: requiere lib/Mars4_5.jar o -Dmars.jar=ruta)
+        Path marsJar = Paths.get(System.getProperty("mars.jar", "lib/Mars4_5.jar"));
+        if (Files.exists(marsJar)) {
+            check("mips_mars_all", "", r -> allInMars(marsJar, programas, ejemplos));
+        } else {
+            System.out.println("SKIP  mips_mars_all (no se encontró " + marsJar + "; ver docs/MIPS.md)");
+        }
 
         System.out.println();
         System.out.println(passed + " passed, " + failed + " failed");
@@ -122,6 +192,133 @@ public class TestRunner {
 
     private static Predicate<PipelineResult> hasError(String category) {
         return r -> !r.isOk() && r.semanticErrors.stream().anyMatch(e -> e.category.equals(category));
+    }
+
+    // ── Ayudas para las pruebas de MIPS ────────────────────────────────────
+    private static final Path MIPS_DIR = Paths.get("tests", "mips");
+
+    /** El programa se ejecuta sin error en el simulador y su salida es exactamente la esperada (tests/mips/expected). */
+    private static Predicate<PipelineResult> runsAs(String name) {
+        return r -> {
+            if (!r.isOk() || r.mips.isEmpty()) return false;
+            String expected = read(MIPS_DIR.resolve("expected").resolve(name + ".out")).replace("\r\n", "\n");
+            if (!r.runOutput.equals(expected)) {
+                System.out.println("        esperado: " + expected.replace("\n", "|"));
+                System.out.println("        obtenido: " + r.runOutput.replace("\n", "|"));
+                return false;
+            }
+            return true;
+        };
+    }
+
+    private static Predicate<PipelineResult> mipsHas(String... parts) {
+        return r -> {
+            if (!r.isOk() || r.mips.isEmpty()) return false;
+            for (String p : parts) {
+                if (!r.mips.contains(p)) {
+                    System.out.println("        falta en el MIPS: " + p);
+                    return false;
+                }
+            }
+            return true;
+        };
+    }
+
+    /** Ejecuta cada programa de prueba en MARS (modo de línea de comandos) y compara con la salida esperada. */
+    private static boolean allInMars(Path marsJar, String[] programas, String[] ejemplos) {
+        try {
+            Path tmp = Files.createTempDirectory("mars_");
+            boolean ok = true;
+            List<String[]> casos = new java.util.ArrayList<>();
+            for (String p : programas) casos.add(new String[]{p, MIPS_DIR.resolve(p + ".cps").toString()});
+            for (String e : ejemplos) casos.add(new String[]{"ex_" + e, EXAMPLES.resolve("ok").resolve(e + ".cps").toString()});
+            for (String[] c : casos) {
+                PipelineResult r = new PipelineRunner().run(read(Paths.get(c[1])));
+                Path asm = tmp.resolve(c[0] + ".asm");
+                Files.write(asm, r.mips.getBytes(StandardCharsets.UTF_8));
+                Process pr = new ProcessBuilder("java", "-jar", marsJar.toAbsolutePath().toString(), "nc", "sm", asm.toString())
+                        .redirectErrorStream(true).start();
+                String out = new String(pr.getInputStream().readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
+                if (!pr.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) pr.destroyForcibly();
+                if (out.endsWith("\n\n")) out = out.substring(0, out.length() - 1); // MARS agrega un salto de línea al terminar
+                String expected = read(MIPS_DIR.resolve("expected").resolve(c[0] + ".out")).replace("\r\n", "\n");
+                if (!out.equals(expected)) {
+                    System.out.println("        MARS difiere en " + c[0] + ": " + out.replace("\n", "|"));
+                    ok = false;
+                }
+            }
+            return ok;
+        } catch (IOException | InterruptedException e) {
+            System.out.println("        no se pudo ejecutar MARS: " + e);
+            return false;
+        }
+    }
+
+    private static int spills(PipelineResult r) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("total de derrames a la pila: (\\d+)").matcher(r.registerReport);
+        return m.find() ? Integer.parseInt(m.group(1)) : -1;
+    }
+
+    /** Instrucciones del conjunto que entienden tanto SPIM como MARS. */
+    private static final java.util.Set<String> PORTABLE = new java.util.HashSet<>(java.util.Arrays.asList(
+        "addu", "addiu", "subu", "mul", "div", "mflo", "mfhi", "and", "or", "xori", "sll", "slt", "seq", "sne", "sgt", "sge", "sle",
+        "li", "la", "move", "lw", "sw", "lb", "sb", "j", "jal", "jr", "jalr", "beq", "bne", "beqz", "bnez", "blt", "ble", "bgt",
+        "bge", "bgeu", "syscall"));
+
+    private static java.util.Set<String> unsupportedMnemonics(String asm) {
+        java.util.Set<String> bad = new java.util.TreeSet<>();
+        boolean text = false;
+        for (String raw : asm.split("\n")) {
+            String line = raw.substring(0, commentStart(raw)).trim();
+            if (line.isEmpty()) continue;
+            if (line.equals(".text")) { text = true; continue; }
+            if (line.equals(".data")) { text = false; continue; }
+            if (!text) continue;
+            int colon = line.indexOf(':');
+            if (colon >= 0 && line.substring(0, colon).matches("[A-Za-z0-9_.$]+")) line = line.substring(colon + 1).trim();
+            if (line.isEmpty() || line.startsWith(".")) continue;
+            String op = line.split("\\s+")[0];
+            if (!PORTABLE.contains(op)) bad.add(op);
+        }
+        return bad;
+    }
+
+    private static boolean allPortable(Path dir) {
+        try {
+            List<Path> files = new java.util.ArrayList<>();
+            try (java.util.stream.Stream<Path> w = Files.walk(dir)) {
+                w.filter(x -> x.toString().endsWith(".cps")).forEach(files::add);
+            }
+            for (Path f : files) {
+                PipelineResult r = new PipelineRunner().run(read(f));
+                java.util.Set<String> bad = unsupportedMnemonics(r.mips);
+                if (!bad.isEmpty()) {
+                    System.out.println("        instrucciones no portables en " + f + ": " + bad);
+                    return false;
+                }
+            }
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Posición del '#' que inicia un comentario (fuera de comillas), o la longitud de la línea. */
+    private static int commentStart(String line) {
+        boolean inStr = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') inStr = !inStr;
+            else if (c == '#' && !inStr) return i;
+        }
+        return line.length();
+    }
+
+    private static boolean commentsAscii(String asm) {
+        for (String line : asm.split("\n")) {
+            for (char c : line.substring(commentStart(line)).toCharArray()) if (c > 127) return false;
+        }
+        return true;
     }
 
     // ── Ayudas para las pruebas de TAC ─────────────────────────────────────
