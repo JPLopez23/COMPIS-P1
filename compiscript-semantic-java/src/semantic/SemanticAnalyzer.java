@@ -24,6 +24,8 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
     public final Map<ParserRuleContext, Scope> scopeOf = new java.util.IdentityHashMap<>();
     /** Tipo estático de átomos y sufijos de leftHandSide. Lo usa el generador de TAC. */
     public final Map<ParseTree, Type> nodeTypes = new java.util.IdentityHashMap<>();
+    /** Tipo estático de cada expresión (cada nivel de precedencia). Lo usa el generador de TAC. */
+    public final Map<ParseTree, Type> exprTypes = new java.util.IdentityHashMap<>();
 
     private int loopDepth = 0;
     private int switchDepth = 0;
@@ -507,11 +509,77 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
     // -------------------- expresiones (typeOf) --------------------
 
     private Type typeOfExpression(ExpressionContext ctx) {
+        Type t = typeOfExpression0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfAssignment(AssignmentExprContext ctx) {
+        Type t = typeOfAssignment0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfConditional(ConditionalExprContext raw) {
+        Type t = typeOfConditional0(raw);
+        exprTypes.put(raw, t);
+        return t;
+    }
+
+    private Type typeOfLogicalOr(LogicalOrExprContext ctx) {
+        Type t = typeOfLogicalOr0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfLogicalAnd(LogicalAndExprContext ctx) {
+        Type t = typeOfLogicalAnd0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfEquality(EqualityExprContext ctx) {
+        Type t = typeOfEquality0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfRelational(RelationalExprContext ctx) {
+        Type t = typeOfRelational0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfAdditive(AdditiveExprContext ctx) {
+        Type t = typeOfAdditive0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfMultiplicative(MultiplicativeExprContext ctx) {
+        Type t = typeOfMultiplicative0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfUnary(UnaryExprContext ctx) {
+        Type t = typeOfUnary0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfPrimary(PrimaryExprContext ctx) {
+        Type t = typeOfPrimary0(ctx);
+        exprTypes.put(ctx, t);
+        return t;
+    }
+
+    private Type typeOfExpression0(ExpressionContext ctx) {
         if (ctx == null) return ErrorType.INSTANCE;
         return typeOfAssignment(ctx.assignmentExpr());
     }
 
-    private Type typeOfAssignment(AssignmentExprContext ctx) {
+    private Type typeOfAssignment0(AssignmentExprContext ctx) {
         if (ctx instanceof AssignExprContext) {
             AssignExprContext c = (AssignExprContext) ctx;
             Type lhsT = typeOfLeftHandSide(c.lhs);
@@ -544,7 +612,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return ErrorType.INSTANCE;
     }
 
-    private Type typeOfConditional(ConditionalExprContext raw) {
+    private Type typeOfConditional0(ConditionalExprContext raw) {
         // única alternativa de conditionalExpr está etiquetada como #TernaryExpr
         TernaryExprContext ctx = (TernaryExprContext) raw;
         Type orT = typeOfLogicalOr(ctx.logicalOrExpr());
@@ -562,7 +630,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return ErrorType.INSTANCE;
     }
 
-    private Type typeOfLogicalOr(LogicalOrExprContext ctx) {
+    private Type typeOfLogicalOr0(LogicalOrExprContext ctx) {
         List<LogicalAndExprContext> ands = ctx.logicalAndExpr();
         if (ands.size() == 1) return typeOfLogicalAnd(ands.get(0));
         for (LogicalAndExprContext a : ands) {
@@ -573,7 +641,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return PrimitiveType.BOOLEAN;
     }
 
-    private Type typeOfLogicalAnd(LogicalAndExprContext ctx) {
+    private Type typeOfLogicalAnd0(LogicalAndExprContext ctx) {
         List<EqualityExprContext> eqs = ctx.equalityExpr();
         if (eqs.size() == 1) return typeOfEquality(eqs.get(0));
         for (EqualityExprContext e : eqs) {
@@ -584,7 +652,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return PrimitiveType.BOOLEAN;
     }
 
-    private Type typeOfEquality(EqualityExprContext ctx) {
+    private Type typeOfEquality0(EqualityExprContext ctx) {
         List<RelationalExprContext> rels = ctx.relationalExpr();
         if (rels.size() == 1) return typeOfRelational(rels.get(0));
         List<Type> types = new ArrayList<>();
@@ -596,7 +664,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return PrimitiveType.BOOLEAN;
     }
 
-    private Type typeOfRelational(RelationalExprContext ctx) {
+    private Type typeOfRelational0(RelationalExprContext ctx) {
         List<AdditiveExprContext> adds = ctx.additiveExpr();
         if (adds.size() == 1) return typeOfAdditive(adds.get(0));
         List<Type> types = new ArrayList<>();
@@ -609,7 +677,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return PrimitiveType.BOOLEAN;
     }
 
-    private Type typeOfAdditive(AdditiveExprContext ctx) {
+    private Type typeOfAdditive0(AdditiveExprContext ctx) {
         List<MultiplicativeExprContext> muls = ctx.multiplicativeExpr();
         if (muls.size() == 1) return typeOfMultiplicative(muls.get(0));
         Type curType = typeOfMultiplicative(muls.get(0));
@@ -641,7 +709,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return curType;
     }
 
-    private Type typeOfMultiplicative(MultiplicativeExprContext ctx) {
+    private Type typeOfMultiplicative0(MultiplicativeExprContext ctx) {
         List<UnaryExprContext> us = ctx.unaryExpr();
         if (us.size() == 1) return typeOfUnary(us.get(0));
         Type curType = typeOfUnary(us.get(0));
@@ -660,7 +728,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return curType;
     }
 
-    private Type typeOfUnary(UnaryExprContext ctx) {
+    private Type typeOfUnary0(UnaryExprContext ctx) {
         if (ctx.getChildCount() == 2) {
             String op = ctx.getChild(0).getText();
             Type inner = typeOfUnary(ctx.unaryExpr());
@@ -679,7 +747,7 @@ public class SemanticAnalyzer extends CompiscriptBaseVisitor<Void> {
         return typeOfPrimary(ctx.primaryExpr());
     }
 
-    private Type typeOfPrimary(PrimaryExprContext ctx) {
+    private Type typeOfPrimary0(PrimaryExprContext ctx) {
         if (ctx.literalExpr() != null) return typeOfLiteral(ctx.literalExpr());
         if (ctx.leftHandSide() != null) return typeOfLeftHandSide(ctx.leftHandSide());
         return typeOfExpression(ctx.expression());
