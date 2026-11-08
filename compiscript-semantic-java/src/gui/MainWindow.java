@@ -41,6 +41,8 @@ public class MainWindow extends JFrame {
     private static final int TAB_SYMBOLS = 3;
     private static final int TAB_TAC     = 4;
     private static final int TAB_FRAMES  = 5;
+    private static final int TAB_MIPS    = 6;
+    private static final int TAB_RUN     = 7;
 
     private final JTextArea editorArea = new JTextArea();
     private final JTextArea consoleArea = new JTextArea();
@@ -329,6 +331,8 @@ public class MainWindow extends JFrame {
         tabs.addTab("Símbolos",  makePlaceholder("Compila para ver la tabla de símbolos."));
         tabs.addTab("Código TAC", makePlaceholder("Compila para ver el código intermedio (TAC)."));
         tabs.addTab("Registros de activación", makePlaceholder("Compila para ver los registros de activación."));
+        tabs.addTab("Código MIPS", makePlaceholder("Compila para ver el ensamblador MIPS."));
+        tabs.addTab("Ejecución", makePlaceholder("Compila para ejecutar el programa en el simulador MIPS."));
     }
 
     // ── Consola ─────────────────────────────────────────────────────────────
@@ -524,6 +528,9 @@ public class MainWindow extends JFrame {
         tabs.setComponentAt(TAB_SYMBOLS, buildSymbolsTab(res));
         tabs.setComponentAt(TAB_TAC,     buildTextTab(res.tac, "Sin código intermedio: corrige los errores para generarlo."));
         tabs.setComponentAt(TAB_FRAMES,  buildTextTab(res.activationMarkdown, "Sin registros de activación: corrige los errores para generarlos."));
+        tabs.setComponentAt(TAB_MIPS,    buildTextTab(res.mips.isEmpty() ? "" : "# Asignación de registros por función\n"
+                + commentLines(res.registerReport) + "\n" + res.mips, "Sin código MIPS: corrige los errores para generarlo."));
+        tabs.setComponentAt(TAB_RUN,     buildTextTab(runText(res), "Sin ejecución: corrige los errores para generar el código MIPS."));
 
         boolean hasErrors = !res.lexicalErrors.isEmpty() || !res.syntaxErrors.isEmpty() || !res.semanticErrors.isEmpty();
         tabs.setForegroundAt(TAB_ERRORS, hasErrors ? Theme.forPhase(res.phase()).accent : Theme.OK.accent);
@@ -715,6 +722,22 @@ public class MainWindow extends JFrame {
         JScrollPane outer = new JScrollPane(container);
         outer.getVerticalScrollBar().setUnitIncrement(16);
         return outer;
+    }
+
+    private static String commentLines(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (String l : s.split("\n")) if (!l.trim().isEmpty()) sb.append("# ").append(l).append("\n");
+        return sb.toString();
+    }
+
+    private static String runText(PipelineResult r) {
+        if (r.mips.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("--- salida del programa (simulador MIPS) ---\n").append(r.runOutput);
+        if (!r.runOutput.isEmpty() && !r.runOutput.endsWith("\n")) sb.append("\n");
+        if (r.runError != null) sb.append("--- error de ejecución: ").append(r.runError).append(" ---\n");
+        else sb.append("--- fin: ").append(r.runSteps).append(" instrucciones ejecutadas ---\n");
+        return sb.toString();
     }
 
     // ── Tabs de texto (TAC, registros de activación) ───────────────────────
