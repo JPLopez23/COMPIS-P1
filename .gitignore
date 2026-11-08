@@ -15,3 +15,6 @@
 *.iml
 Thumbs.db
 .DS_Store
+
+# Simulador MARS opcional para las pruebas (se descarga aparte)
+Mars*.jar
