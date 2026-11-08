@@ -47,7 +47,7 @@ public abstract class AccessGenerator extends TacBase {
         if (sym != null && sym.storage.equals("FIELD")) {
             lv.kind = "field";
             lv.base = thisOperand();
-            lv.name = sym.name;
+            lv.name = sym.name + "@" + sym.offset;
         } else {
             lv.kind = "var";
             lv.name = sym == null ? "?" : varOperand(sym);
@@ -95,7 +95,9 @@ public abstract class AccessGenerator extends TacBase {
             lv.index = genExpr(((IndexExprContext) last).expression());
         } else if (last instanceof PropertyAccessExprContext) {
             lv.kind = "field";
-            lv.name = ((PropertyAccessExprContext) last).Identifier().getText();
+            ParseTree prev = sufs.size() == 1 ? lhs.primaryAtom() : sufs.get(sufs.size() - 2);
+            String fname = ((PropertyAccessExprContext) last).Identifier().getText();
+            lv.name = fname + "@" + fieldOffset(sa.nodeTypes.get(prev), fname);
         } else {
             throw new IllegalStateException("Destino de asignación inválido");
         }
@@ -117,10 +119,10 @@ public abstract class AccessGenerator extends TacBase {
                 FunctionSymbol fs = (FunctionSymbol) sym;
                 if (n > 0 && sufs.get(0) instanceof CallExprContext) {
                     List<String> args = new ArrayList<>();
-                    if (fs.isMethod) args.add(thisOperand());
+                    if (trueMethods.contains(fs)) args.add(thisOperand());
                     args.addAll(genArgs(((CallExprContext) sufs.get(0)).arguments()));
                     curOp = emitCall(fs.label, false, args, !PrimitiveType.VOID.equals(fs.returnType),
-                            "enlace=env(" + linkDepth(fs) + ")");
+                            linkDepth(fs), "función " + fs.name);
                     lastNode = sufs.get(0);
                     i = 1;
                 } else {
@@ -130,7 +132,7 @@ public abstract class AccessGenerator extends TacBase {
                 }
             } else if (sym != null && sym.storage.equals("FIELD")) {
                 String t = newTemp();
-                emit(t + " = " + thisOperand() + "." + sym.name);
+                emit(t + " = " + thisOperand() + "." + sym.name + "@" + sym.offset);
                 curOp = t;
             } else if (sym != null) {
                 curOp = varOperand(sym);
@@ -164,13 +166,13 @@ public abstract class AccessGenerator extends TacBase {
                     args.add(curOp);
                     args.addAll(genArgs(((CallExprContext) sufs.get(i + 1)).arguments()));
                     curOp = emitCall(fs.label, false, args, !PrimitiveType.VOID.equals(fs.returnType),
-                            "método de " + (fs.ownerClass != null ? fs.ownerClass.name : "?"));
+                            linkDepth(fs), "método de " + (fs.ownerClass != null ? fs.ownerClass.name : "?"));
                     lastNode = sufs.get(i + 1);
                     i += 2;
                 } else {
                     free(curOp);
                     String t = newTemp();
-                    emit(t + " = " + curOp + "." + name);
+                    emit(t + " = " + fieldRef(curOp, recvType, name));
                     curOp = t;
                     lastNode = suf;
                     i++;
@@ -180,7 +182,7 @@ public abstract class AccessGenerator extends TacBase {
                 boolean ret = !(ft instanceof FunctionType) || !PrimitiveType.VOID.equals(((FunctionType) ft).ret);
                 List<String> args = genArgs(((CallExprContext) suf).arguments());
                 args.add(0, curOp);
-                curOp = emitCall(null, true, args, ret, "llamada indirecta");
+                curOp = emitCall(null, true, args, ret, -1, "llamada indirecta");
                 lastNode = suf;
                 i++;
             }
@@ -203,12 +205,12 @@ public abstract class AccessGenerator extends TacBase {
      * Emite param/call. Para llamadas indirectas args[0] es el valor de la closure.
      * Devuelve el temporal con el resultado o null si la función es void.
      */
-    protected String emitCall(String target, boolean indirect, List<String> args, boolean returnsValue, String note) {
+    protected String emitCall(String target, boolean indirect, List<String> args, boolean returnsValue, int link, String note) {
         List<String> real = indirect ? args.subList(1, args.size()) : args;
         for (String a : real) emit("param " + a);
         String callee = indirect ? args.get(0) : target;
         for (String a : args) free(a);
-        String instr = (indirect ? "callind " : "call ") + callee + ", " + real.size();
+        String instr = (indirect ? "callind " : "call ") + callee + ", " + real.size() + (indirect ? "" : ", env(" + link + ")");
         String res = null;
         if (returnsValue) {
             res = newTemp();
@@ -231,7 +233,7 @@ public abstract class AccessGenerator extends TacBase {
             String il = initLabel.get(c);
             if (il != null) {
                 emit("param " + t);
-                emit("call " + il + ", 1   ; inicializa atributos de " + c);
+                emit("call " + il + ", 1, env(" + Math.max(0, cur.level - classLevel.getOrDefault(c, 0)) + ")   ; inicializa atributos de " + c);
             }
         }
         Symbol ctor = cs != null ? cs.classType.lookup("constructor") : null;
@@ -239,7 +241,8 @@ public abstract class AccessGenerator extends TacBase {
         if (ctor instanceof FunctionSymbol) {
             emit("param " + t);
             for (String a : args) emit("param " + a);
-            emit("call " + ((FunctionSymbol) ctor).label + ", " + (args.size() + 1) + "   ; constructor de " + cname);
+            emit("call " + ((FunctionSymbol) ctor).label + ", " + (args.size() + 1) + ", env(" + linkDepth((FunctionSymbol) ctor)
+                    + ")   ; constructor de " + cname);
         }
         for (String a : args) free(a);
         return t;

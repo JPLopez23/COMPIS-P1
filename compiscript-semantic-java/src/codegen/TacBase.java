@@ -29,6 +29,9 @@ public abstract class TacBase {
     protected final Set<String> usedLabels = new HashSet<>(Arrays.asList("main"));
     protected final Map<String, ClassSymbol> classByName = new LinkedHashMap<>();
     protected final Map<String, String> initLabel = new HashMap<>(); // clase -> etiqueta de su inicializador
+    protected final Map<String, Integer> classLevel = new HashMap<>(); // clase -> nivel del marco que la declara
+    /** Métodos propiamente dichos (declarados directamente en la clase): reciben this como primer parámetro. */
+    protected final Set<FunctionSymbol> trueMethods = new HashSet<>();
     protected Deque<String> breakTargets = new ArrayDeque<>();
     protected Deque<String> continueTargets = new ArrayDeque<>();
 
@@ -46,6 +49,10 @@ public abstract class TacBase {
             if (sc.ownerClass != null) {
                 ClassSymbol cs = sc.ownerClass;
                 classByName.put(cs.name, cs);
+                int declLevel = 0;
+                for (Scope p = sc.parent; p != null; p = p.parent)
+                    if (p.kind.equals("function") && p.ownerFn != null) declLevel++;
+                classLevel.put(cs.name, declLevel);
                 classList.add(cs);
                 cs.storage = "CLASS";
                 cs.label = cs.name;
@@ -61,6 +68,7 @@ public abstract class TacBase {
                 else if (p.kind.equals("class") && p.ownerClass != null) parts.add(0, p.ownerClass.name);
             }
             fs.storage = "FUNCTION";
+            if (sc.parent != null && sc.parent.kind.equals("class")) trueMethods.add(fs);
             fs.nestLevel = level;
             fs.label = uniqLabel(String.join("_", parts));
         }
@@ -111,6 +119,31 @@ public abstract class TacBase {
         while (!usedLabels.add(c)) c = base + "_" + k++;
         return c;
     }
+
+    /** Desplazamiento del atributo dentro de un objeto de tipo recv (incluye atributos heredados). */
+    protected int fieldOffset(Type recv, String name) {
+        if (recv instanceof ClassType) {
+            ClassSymbol cs = classByName.get(((ClassType) recv).name);
+            Integer off = cs == null ? null : cs.fieldOffsets.get(name);
+            if (off != null) return off;
+        }
+        throw new IllegalStateException("No se conoce el desplazamiento del atributo '" + name + "' en " + recv);
+    }
+
+    /** Operando de acceso a un atributo: objeto.atributo@desplazamiento. */
+    protected String fieldRef(String base, Type recv, String name) {
+        return base + "." + name + "@" + fieldOffset(recv, name);
+    }
+
+    /** Desplazamiento (respecto a gp) de cada variable global, por su nombre en el TAC. */
+    public Map<String, Integer> globalOffsets() {
+        Map<String, Integer> m = new LinkedHashMap<>();
+        for (Symbol s : sa.stack.globalScope.symbols.values())
+            if ("GLOBAL".equals(s.storage)) m.put(s.tacName, s.offset);
+        return m;
+    }
+
+    protected static boolean isString(Type t) { return PrimitiveType.STRING.equals(t); }
 
     protected static int sizeOf(Type t) {
         return PrimitiveType.BOOLEAN.equals(t) ? 1 : 4;

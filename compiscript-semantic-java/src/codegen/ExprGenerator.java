@@ -30,7 +30,10 @@ public abstract class ExprGenerator extends AccessGenerator {
             LValue lv = new LValue();
             lv.kind = "field";
             lv.base = genLhs(c.lhs, c.lhs.suffixOp().size());
-            lv.name = c.Identifier().getText();
+            ParseTree lastNode = c.lhs.suffixOp().isEmpty() ? c.lhs.primaryAtom()
+                    : c.lhs.suffixOp().get(c.lhs.suffixOp().size() - 1);
+            String fname = c.Identifier().getText();
+            lv.name = fname + "@" + fieldOffset(sa.nodeTypes.get(lastNode), fname);
             String v = genExpr(c.assignmentExpr());
             return store(lv, v);
         }
@@ -83,9 +86,15 @@ public abstract class ExprGenerator extends AccessGenerator {
         List<ParseTree> ops = operandsOf(chain);
         if (ops.size() == 1) return genExpr(ops.get(0));
         String acc = genExpr(ops.get(0));
+        Type accType = sa.exprTypes.get(ops.get(0));
         for (int i = 1; i < ops.size(); i++) {
             String op = chain.getChild(2 * i - 1).getText();
+            Type rhsType = sa.exprTypes.get(ops.get(i));
             String rhs = genExpr(ops.get(i));
+            op = typedOp(op, accType, rhsType);
+            if (op.equals("++")) accType = PrimitiveType.STRING;
+            else if (op.equals("==s") || op.equals("!=s") || op.equals("==") || op.equals("!=")
+                    || op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=")) accType = PrimitiveType.BOOLEAN;
             free(acc);
             free(rhs);
             String t = newTemp();
@@ -93,6 +102,14 @@ public abstract class ExprGenerator extends AccessGenerator {
             acc = t;
         }
         return acc;
+    }
+
+    /** Operador del TAC según los tipos: + de cadenas es concatenación (++), ==/!= de cadenas compara contenido. */
+    protected String typedOp(String op, Type left, Type right) {
+        boolean str = isString(left) || isString(right);
+        if (op.equals("+") && str) return "++";
+        if ((op.equals("==") || op.equals("!=")) && isString(left) && isString(right)) return op + "s";
+        return op;
     }
 
     protected String genUnary(UnaryExprContext c) {
@@ -188,7 +205,8 @@ public abstract class ExprGenerator extends AccessGenerator {
             if (ops.size() == 2) {
                 String a = genExpr(ops.get(0));
                 String b = genExpr(ops.get(1));
-                emit("if " + a + " " + n.getChild(1).getText() + " " + b + " goto " + lt);
+                String rop = typedOp(n.getChild(1).getText(), sa.exprTypes.get(ops.get(0)), sa.exprTypes.get(ops.get(1)));
+                emit("if " + a + " " + rop + " " + b + " goto " + lt);
                 free(a);
                 free(b);
                 emit("goto " + lf);

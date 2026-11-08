@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 final class Peephole {
     private Peephole() {}
 
-    private static final Pattern REL = Pattern.compile("^    if (.+) (==|!=|<=|>=|<|>) (.+) goto (L\\d+)$");
+    private static final Pattern REL = Pattern.compile("^    if (.+) (==s|!=s|==|!=|<=|>=|<|>) (.+) goto (L\\d+)$");
     private static final Pattern TRUTH = Pattern.compile("^    if (.+) goto (L\\d+)$");
     private static final Pattern LABEL_REF = Pattern.compile("\\bL\\d+\\b");
 
@@ -88,6 +88,8 @@ final class Peephole {
         switch (op) {
             case "==": return "!=";
             case "!=": return "==";
+            case "==s": return "!=s";
+            case "!=s": return "==s";
             case "<": return ">=";
             case "<=": return ">";
             case ">": return "<=";

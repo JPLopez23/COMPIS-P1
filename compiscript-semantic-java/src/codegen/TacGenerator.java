@@ -62,7 +62,11 @@ public class TacGenerator extends ExprGenerator {
             free(v);
         } else if (st.printStatement() != null) {
             String v = genExpr(st.printStatement().expression());
-            emit("print " + v);
+            Type pt = sa.exprTypes.get(st.printStatement().expression());
+            if (isString(pt)) emit("prints " + v);
+            else if (PrimitiveType.BOOLEAN.equals(pt)) emit("printb " + v);
+            else if (PrimitiveType.NULL.equals(pt)) emit("prints \"null\"");
+            else emit("print " + v);
             free(v);
         } else if (st.block() != null) genBlock(st.block(), true);
         else if (st.ifStatement() != null) genIf(st.ifStatement());
@@ -129,7 +133,8 @@ public class TacGenerator extends ExprGenerator {
             LValue lv = new LValue();
             lv.kind = "field";
             lv.base = obj;
-            lv.name = ctx.Identifier().getText();
+            String fname = ctx.Identifier().getText();
+            lv.name = fname + "@" + fieldOffset(sa.exprTypes.get(exprs.get(0)), fname);
             String v = genExpr(exprs.get(1));
             store(lv, v);
             free(v);
@@ -290,7 +295,7 @@ public class TacGenerator extends ExprGenerator {
             String lc = newLabel();
             labels.add(lc);
             String cv = genExpr(c.expression());
-            emit("if " + sw + " == " + cv + " goto " + lc);
+            emit("if " + sw + (isString(sa.exprTypes.get(ctx.expression())) ? " ==s " : " == ") + cv + " goto " + lc);
             free(cv);
         }
         DefaultCaseContext def = ctx.defaultCase();
@@ -336,7 +341,7 @@ public class TacGenerator extends ExprGenerator {
         cur = f;
         curScope = sc;
 
-        if (fs.isMethod) {
+        if (trueMethods.contains(fs)) {
             f.hasThis = true;
             f.usedNames.add("this");
             Symbol th = sc.resolveLocal("this");
@@ -388,11 +393,13 @@ public class TacGenerator extends ExprGenerator {
             for (ClassMemberContext m : ctx.classMember()) {
                 if (m.variableDeclaration() != null && m.variableDeclaration().initializer() != null) {
                     String v = genExpr(m.variableDeclaration().initializer().expression());
-                    emit("this." + m.variableDeclaration().Identifier().getText() + " = " + v);
+                    String fn = m.variableDeclaration().Identifier().getText();
+                    emit("this." + fn + "@" + cs.fieldOffsets.get(fn) + " = " + v);
                     free(v);
                 } else if (m.constantDeclaration() != null) {
                     String v = genExpr(m.constantDeclaration().expression());
-                    emit("this." + m.constantDeclaration().Identifier().getText() + " = " + v);
+                    String fn = m.constantDeclaration().Identifier().getText();
+                    emit("this." + fn + "@" + cs.fieldOffsets.get(fn) + " = " + v);
                     free(v);
                 }
                 cur.freeAll();
