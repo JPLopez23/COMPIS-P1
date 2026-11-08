@@ -31,14 +31,14 @@ end <etiqueta>
 | Instrucción | Descripción |
 |---|---|
 | `x = y` | copia |
-| `x = y op z` | binaria: `+ - * / %` y comparaciones `== != < <= > >=` (resultado boolean) |
+| `x = y op z` | binaria: `+ - * / %` y comparaciones `== != < <= > >=` (resultado boolean). Con cadenas: `++` (concatenación) y `==s` / `!=s` (comparación por contenido) |
 | `x = - y`, `x = ! y` | unarias |
 | `L:` | etiqueta |
 | `goto L` | salto incondicional |
 | `if y goto L` / `ifFalse y goto L` | salto según un booleano |
 | `if y relop z goto L` | salto condicional con comparación |
 | `param y` | empuja un argumento (en orden); en métodos el primero es el receptor |
-| `call f, n` / `x = call f, n` | llamada directa con `n` parámetros |
+| `call f, n, env(k)` / `x = call f, n, env(k)` | llamada directa con `n` parámetros; `env(k)` es el enlace de acceso que recibe el llamado |
 | `callind c, n` / `x = callind c, n` | llamada a través de un valor-función (closure) |
 | `return` / `return y` | retorno |
 | `x = closure f, env(k)` | crea un valor-función para `f` capturando el entorno `k` |
@@ -46,11 +46,13 @@ end <etiqueta>
 | `x = a[i]` / `a[i] = y` | acceso indexado |
 | `x = len a` | longitud de una lista |
 | `x = new C, bytes` | reserva un objeto de la clase `C` |
-| `x = o.f` / `o.f = y` | acceso a atributos |
-| `print y` | impresión |
+| `x = o.f@d` / `o.f@d = y` | acceso a atributos; `d` es el desplazamiento (en bytes) del atributo dentro del objeto |
+| `print y` / `prints y` / `printb y` | impresión de un entero / una cadena / un booleano (`true`/`false`) |
 | `pushhandler L` / `pophandler` / `x = exception` | try/catch: `L` es el manejador, `x` recibe la excepción |
 
-Comentarios de llamada: `; enlace=env(k)` indica qué marco será el **enlace de acceso** del llamado (el marco que define la función). `k = nivel_actual − (nivel_llamado − 1)`.
+El enlace de acceso de `call f, n, env(k)` es el marco que define a `f`: `k = nivel_actual − (nivel_llamado − 1)`. Los comentarios después de `;` solo documentan.
+
+> **Cambio de la Fase 3.** Para poder traducir el TAC a MIPS sin volver a consultar el árbol, se hicieron explícitos tres datos que antes eran implícitos: el enlace de acceso de cada `call` (antes un comentario), el desplazamiento de cada atributo (`o.f@d`, antes `o.f`) y los tipos de las operaciones sobre cadenas e impresiones (`++`, `==s`, `prints`, `printb`).
 
 ## 4. Ejemplos de traducción
 
@@ -94,10 +96,10 @@ L3:
 ```
 t0 = n - 1
 param t0
-t0 = call fib, 1   ; enlace=env(1)
+t0 = call fib, 1, env(1)
 t1 = n - 2
 param t1
-t1 = call fib, 1   ; enlace=env(1)
+t1 = call fib, 1, env(1)
 t0 = t0 + t1
 return t0
 ```
@@ -114,13 +116,13 @@ Las funciones usadas como valor (`let f = fib;`) se traducen a `closure` y se in
 ```
 t0 = new Punto3, 12
 param t0
-call Punto_$init, 1        ; inicializadores de atributos, de la clase raíz a la instanciada
+call Punto_$init, 1, env(0)   ; inicializadores de atributos, de la clase raíz a la instanciada
 param t0
-call Punto3_$init, 1
+call Punto3_$init, 1, env(0)
 param t0
 param 1
 param 2
-call Punto_constructor, 3  ; constructor (propio o heredado)
+call Punto_constructor, 3, env(0)   ; constructor (propio o heredado)
 ```
 Los métodos son funciones `Clase_metodo` cuyo primer parámetro es `this`.
 
@@ -152,8 +154,8 @@ Tamaños: `integer` 4, `string`/lista/objeto/función 4 (referencia), `boolean` 
 
 - El TAC se genera solo si no hubo errores léxicos, sintácticos ni semánticos (las advertencias no lo impiden).
 - Las llamadas a métodos se resuelven **estáticamente** con el tipo declarado del receptor (herencia: se busca hacia arriba; no hay despacho dinámico por sobreescritura).
-- Un método anidado dentro de otro método recibe `this` como primer parámetro (así lo clasifica el analizador semántico).
+- Una función anidada dentro de un método no recibe `this` como parámetro: usa el del método que la contiene (`env(1).this`).
 - Los enlaces de acceso apuntan al marco vivo de la función definidora: una closure no puede sobrevivir a esa función (no se heapean los marcos).
 - No hay plegado de constantes; `try/catch` se expresa con `pushhandler/pophandler` y queda al backend implementar las excepciones.
 - La evaluación de argumentos y operandos es de izquierda a derecha; en una asignación `a[i] = v` primero se evalúa el destino y luego el valor.
-- Las cadenas se concatenan con `+` (el tipo lo distingue el backend).
+- Las cadenas se concatenan con `++` y se comparan con `==s` / `!=s`: el generador del TAC elige el operador según los tipos del análisis semántico.
