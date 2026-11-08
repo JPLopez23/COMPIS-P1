@@ -30,6 +30,10 @@ public class Main {
         boolean writeSymbols = false;
         boolean writeTac = false;
         boolean showTac = false;
+        boolean writeMips = false;
+        boolean showMips = false;
+        boolean runMips = false;
+        boolean showRegs = false;
 
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
@@ -39,6 +43,10 @@ public class Main {
                 case "-symbols": writeSymbols = true; break;
                 case "-tac": writeTac = true; break;
                 case "-print-tac": showTac = true; break;
+                case "-mips": writeMips = true; break;
+                case "-print-mips": showMips = true; break;
+                case "-run": runMips = true; break;
+                case "-regs": showRegs = true; break;
                 default:
                     System.err.println("Argumento desconocido: " + args[i]);
                     printUsage();
@@ -54,7 +62,7 @@ public class Main {
 
             String base = baseName(inputFile);
             Path outPath = Paths.get(outDir);
-            if (writeDot || writePng || writeSymbols || writeTac) Files.createDirectories(outPath);
+            if (writeDot || writePng || writeSymbols || writeTac || writeMips) Files.createDirectories(outPath);
 
             if (writeDot) {
                 Path p = outPath.resolve(base + ".dot");
@@ -86,6 +94,29 @@ public class Main {
                 }
             }
 
+            if (showRegs && !res.registerReport.isEmpty()) System.out.print(res.registerReport);
+            if (showMips && !res.mips.isEmpty()) System.out.print(res.mips);
+            if (writeMips) {
+                if (res.mips.isEmpty()) {
+                    System.out.println("mips: no generado (hay errores)");
+                } else {
+                    Path p = outPath.resolve(base + ".asm");
+                    Files.write(p, res.mips.getBytes(StandardCharsets.UTF_8));
+                    System.out.println("mips: " + p);
+                }
+            }
+            if (runMips) {
+                if (res.mips.isEmpty()) {
+                    System.out.println("run: no hay código MIPS para ejecutar (hay errores)");
+                } else {
+                    mips.MipsSimulator.Result r = mips.MipsSimulator.run(res.mips);
+                    System.out.println("--- salida del programa (simulador MIPS) ---");
+                    System.out.print(r.output);
+                    if (r.error != null) System.out.println("--- error de ejecución: " + r.error);
+                    else System.out.println("--- fin (" + r.steps + " instrucciones) ---");
+                }
+            }
+
             System.exit(res.isOk() ? 0 : 1);
         } catch (IOException ex) {
             System.err.println("Error leyendo '" + inputFile + "': " + ex.getMessage());
@@ -102,7 +133,7 @@ public class Main {
     private static void printUsage() {
         System.err.println("Uso:");
         System.err.println("  java -cp out Main gui                                    # Lanza el IDE gráfico (Swing)");
-        System.err.println("  java -cp out Main <archivo.cps> [-out carpeta] [-dot] [-png] [-symbols] [-tac] [-print-tac]");
+        System.err.println("  java -cp out Main <archivo.cps> [-out carpeta] [-dot] [-png] [-symbols] [-tac] [-print-tac] [-mips] [-print-mips] [-run] [-regs]");
         System.err.println();
         System.err.println("  -out       Carpeta de salida (default: output)");
         System.err.println("  -dot       Escribe el árbol sintáctico en formato DOT");
@@ -110,5 +141,9 @@ public class Main {
         System.err.println("  -symbols   Escribe la tabla de símbolos (extendida) en Markdown");
         System.err.println("  -tac       Escribe el código intermedio (.tac) y los registros de activación (.frames.md)");
         System.err.println("  -print-tac Imprime el código intermedio por consola");
+        System.err.println("  -mips      Escribe el ensamblador MIPS (.asm)");
+        System.err.println("  -print-mips Imprime el ensamblador MIPS por consola");
+        System.err.println("  -regs      Muestra el uso de registros $s y los derrames a la pila por función");
+        System.err.println("  -run       Ejecuta el MIPS generado en el simulador incluido");
     }
 }
