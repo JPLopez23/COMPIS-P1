@@ -12,7 +12,7 @@ java -jar lib/antlr-4.13.2-complete.jar -Dlanguage=Java -visitor -no-listener -p
 echo "[2/2] Compilando fuentes Java..."
 javac -encoding UTF-8 -cp lib/antlr-4.13.2-complete.jar -d out -sourcepath src \
   src/generated/Compiscript*.java \
-  src/semantic/*.java src/codegen/*.java \
+  src/semantic/*.java src/codegen/*.java src/mips/*.java \
   src/viz/*.java \
   src/gui/*.java \
   src/tests/TestRunner.java \
