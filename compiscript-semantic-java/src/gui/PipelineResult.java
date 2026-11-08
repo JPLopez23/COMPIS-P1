@@ -24,6 +24,15 @@ public class PipelineResult {
     public String tac = "";
     public String activationMarkdown = "";
 
+    /** Ensamblador MIPS generado a partir del TAC y reporte de asignación de registros; vacíos si hubo errores. */
+    public String mips = "";
+    public String registerReport = "";
+
+    /** Resultado de ejecutar el MIPS en el simulador. */
+    public String runOutput = "";
+    public String runError;
+    public long runSteps;
+
     /** Error fatal del pipeline, null si no hubo. */
     public String error;
 

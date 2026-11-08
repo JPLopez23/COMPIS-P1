@@ -8,6 +8,7 @@ import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
 import codegen.ActivationReport;
 import codegen.TacGenerator;
+import mips.MipsGenerator;
 import semantic.SemanticAnalyzer;
 import viz.ParseTreeToDot;
 import viz.SymbolTableWriter;
@@ -54,6 +55,17 @@ public class PipelineRunner {
                     TacGenerator gen = new TacGenerator(analyzer);
                     res.tac = gen.generate((CompiscriptParser.ProgramContext) tree);
                     res.activationMarkdown = ActivationReport.toMarkdown(gen);
+                    MipsGenerator mg = new MipsGenerator(gen);
+                    res.mips = mg.generate();
+                    StringBuilder rr = new StringBuilder();
+                    for (java.util.Map.Entry<String, String> e : mg.registerReport.entrySet())
+                        rr.append(e.getKey()).append(": ").append(e.getValue()).append("\n");
+                    rr.append("total de derrames a la pila: ").append(mg.totalSpills).append("\n");
+                    res.registerReport = rr.toString();
+                    mips.MipsSimulator.Result run = mips.MipsSimulator.run(res.mips, 20_000_000L, "");
+                    res.runOutput = run.output;
+                    res.runError = run.error;
+                    res.runSteps = run.steps;
                     // la tabla de símbolos ya tiene direcciones, offsets y etiquetas
                     res.symbolsMarkdown = new SymbolTableWriter().toMarkdown(res.allScopes);
                 }
